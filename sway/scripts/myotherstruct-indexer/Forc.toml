@@ -1,0 +1,9 @@
+[project]
+authors = ["Maciej Woś"]
+entry = "main.sw"
+license = "Apache-2.0"
+name = "myotherstruct-indexer"
+
+[dependencies]
+my_contract_lib = { path = "../../libraries/my-contract-lib" }
+ecal_lib = { path = "../../libraries/ecal-lib" }

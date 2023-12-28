@@ -3,9 +3,17 @@ name = "core"
 source = "path+from-root-B77DA2F383183718"
 
 [[package]]
-name = "script"
-source = "member"
+name = "ecal_lib"
+source = "path+from-root-D5EEE7B6CA7A19A9"
 dependencies = ["std"]
+
+[[package]]
+name = "my_contract_lib"
+source = "member"
+dependencies = [
+    "ecal_lib",
+    "std",
+]
 
 [[package]]
 name = "std"

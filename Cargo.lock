@@ -1261,6 +1261,8 @@ dependencies = [
  "fuel-tx 0.43.0",
  "fuel-vm 0.43.0",
  "fuels",
+ "lazy_static",
+ "serde_json",
  "tokio",
 ]
 

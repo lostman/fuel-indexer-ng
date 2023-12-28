@@ -1,0 +1,8 @@
+[project]
+authors = ["Maciej Woś"]
+entry = "lib.sw"
+license = "Apache-2.0"
+name = "my_contract_lib"
+
+[dependencies]
+ecal_lib = { path = "../ecal-lib" }

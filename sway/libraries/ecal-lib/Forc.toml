@@ -1,0 +1,7 @@
+[project]
+authors = ["Maciej Woś"]
+entry = "lib.sw"
+license = "Apache-2.0"
+name = "ecal_lib"
+
+[dependencies]
