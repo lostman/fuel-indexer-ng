@@ -1,7 +1,7 @@
 use anyhow::Context;
 use lazy_static::lazy_static;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::BufReader;
 use std::sync::Mutex;
 use std::{
@@ -23,8 +23,11 @@ use fuels::types::param_types::ParamType;
 use fuels::types::Token;
 
 lazy_static! {
-    static ref TYPE_MAP: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
-    static ref PARAM_TYPES: Mutex<BTreeMap<u64, ParamType>> = Mutex::new(BTreeMap::new());
+    // map(type name => type id)
+    static ref TYPE_MAP: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
+    // map(type id => param type)
+    static ref PARAM_TYPES: Mutex<HashMap<u64, ParamType>> = Mutex::new(HashMap::new());
+    // "types" section of the ABI
     static ref TYPES: Mutex<Value> = Mutex::new(Value::Null);
 }
 
@@ -183,7 +186,9 @@ impl MyEcal {
             .unwrap();
         println!("> print_any = {tokens:?}");
         let v = TYPES.lock().unwrap().as_array().unwrap().clone()[type_id as usize].clone();
-        println!("> print_any:\n{}", pp_token(0, v, tokens));
+        let result = pp_token(0, v, tokens);
+        println!("> print_any:");
+        println!("{result}");
 
         Ok(())
     }
@@ -276,9 +281,9 @@ fn run_indexer_script(script_path: &str, data: Vec<u8>) {
 
 #[tokio::main]
 async fn main() {
-    let indexers = BTreeMap::from([
+    let indexers = HashMap::from([
         ("struct MyStruct", "mystruct-indexer"),
-        ("struct MyOtherStruct", "myotherstruct-indexer"),
+        // ("struct MyOtherStruct", "myotherstruct-indexer"),
     ]);
     let receipts = run_produce_data();
     println!("{receipts:#?}");
@@ -312,58 +317,27 @@ async fn main() {
     }
 }
 
-fn parse_type(t: &Value) -> ParamType {
-    // println!("parsing = {t:#?}");
-    match t.get("type").unwrap().as_str().unwrap() {
-        "u64" => ParamType::U64,
-        "u32" => ParamType::U32,
-        "(_, _)" => {
-            let mut elems = vec![];
-            for c in t.get("components").unwrap().as_array().unwrap() {
-                let type_id: u64 = c.get("type").unwrap().as_u64().unwrap();
-                let t = TYPES.lock().unwrap().get(type_id as usize).unwrap().clone();
-                // println!("inner = {t:#?}");
-                elems.push(parse_type(&t));
-            }
-            ParamType::Tuple(elems)
-        }
-        type_name if type_name.starts_with("struct") => {
-            let mut fields = vec![];
-            for c in t.get("components").unwrap().as_array().unwrap() {
-                let type_id: u64 = c.get("type").unwrap().as_u64().unwrap();
-                let t = TYPES.lock().unwrap().get(type_id as usize).unwrap().clone();
-                // println!("inner = {t:#?}");
-                fields.push(parse_type(&t));
-            }
-            ParamType::Struct {
-                fields,
-                generics: vec![],
-            }
-        }
-        "()" => ParamType::Unit,
-        type_name => unimplemented!("{type_name}"),
-    }
-}
-
-fn pp_token(indent: usize, v: Value, t: Token) -> String {
-    // println!("pp_token v = {v:#?}\n   t = {t:#?}");
-    match t {
+// A simple pretty-printer.
+// `ty` is the entry from "types" in the ABI
+// `tok` is the decoded data `Token`
+fn pp_token(indent: usize, ty: Value, tok: Token) -> String {
+    match tok {
         Token::Unit => "()".to_string(),
         Token::U64(x) => format!("{}", x),
         Token::U32(x) => format!("{}", x),
         Token::Struct(ts) => {
             let indent = indent + 4;
-            let cs = v.get("components").unwrap().as_array().unwrap();
+            let cs = ty.get("components").unwrap().as_array().unwrap();
             let mut result = vec![];
-            for (i, t) in ts.into_iter().enumerate() {
-                let c = cs[i].clone();
-                let name: String = c.get("name").unwrap().as_str().unwrap().to_string();
-                let type_id: u64 = c.get("type").unwrap().as_u64().unwrap();
-                let v = TYPES.lock().unwrap().clone().as_array().unwrap()[type_id as usize].clone();
-                result.push(" ".repeat(indent) + &name + " = " + &pp_token(indent, v, t))
+            for (i, tok) in ts.into_iter().enumerate() {
+                let name: String = cs[i].get("name").unwrap().as_str().unwrap().to_string();
+                let type_id: u64 = cs[i].get("type").unwrap().as_u64().unwrap();
+                let ty =
+                    TYPES.lock().unwrap().clone().as_array().unwrap()[type_id as usize].clone();
+                result.push(" ".repeat(indent) + &name + " = " + &pp_token(indent, ty, tok))
             }
 
-            let type_name = v.get("type").unwrap().as_str().unwrap().to_string();
+            let type_name = ty.get("type").unwrap().as_str().unwrap().to_string();
             let type_name = type_name.strip_prefix("struct ").unwrap_or(&type_name);
             type_name.to_string()
                 + " {\n"
@@ -374,13 +348,13 @@ fn pp_token(indent: usize, v: Value, t: Token) -> String {
         }
         Token::Tuple(ts) => {
             let indent = indent + 4;
-            let cs = v.get("components").unwrap().as_array().unwrap();
+            let cs = ty.get("components").unwrap().as_array().unwrap();
             let mut result = vec![];
-            for (i, t) in ts.into_iter().enumerate() {
-                let c = cs[i].clone();
-                let type_id: u64 = c.get("type").unwrap().as_u64().unwrap();
-                let v = TYPES.lock().unwrap().clone().as_array().unwrap()[type_id as usize].clone();
-                result.push(" ".repeat(indent) + &pp_token(indent, v, t))
+            for (i, tok) in ts.into_iter().enumerate() {
+                let type_id: u64 = cs[i].get("type").unwrap().as_u64().unwrap();
+                let ty =
+                    TYPES.lock().unwrap().clone().as_array().unwrap()[type_id as usize].clone();
+                result.push(" ".repeat(indent) + &pp_token(indent, ty, tok))
             }
             "(\n".to_string() + &result.join(",\n") + "\n" + &" ".repeat(indent - 4) + ")"
         }
@@ -388,35 +362,55 @@ fn pp_token(indent: usize, v: Value, t: Token) -> String {
     }
 }
 
+use fuel_abi_types::abi::program::{ProgramABI, TypeApplication};
+
 fn setup_globals(script_abi_path: &str) -> anyhow::Result<()> {
     // Open the JSON file
     let file = File::open(script_abi_path).context(script_abi_path.to_string())?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
-    let json: Value = serde_json::from_reader(reader)?;
+    let mut buf = String::new();
+    reader.read_to_string(&mut buf)?;
+
+    let program_abi: ProgramABI = serde_json::from_str(&buf)?;
+    println!("> ABI:{program_abi:#?}");
+
+    let type_lookup = program_abi
+        .types
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, a_type)| (i, a_type))
+        .collect::<HashMap<_, _>>();
+
+    let json: Value = serde_json::from_str(&buf)?;
 
     let pretty_json = serde_json::to_string_pretty(&json)?;
 
     // Print the pretty-printed JSON
-    println!("> ABI\n{}", pretty_json);
+    println!("> ABI");
+    println!("{pretty_json}");
 
     // 1. Store contents of "types" for generic struct processing
     *TYPES.lock().unwrap() = json.get("types").unwrap().clone();
 
     // 2. map(type id => param type)
-    for (i, t) in json
-        .get("types")
-        .unwrap()
-        .as_array()
-        .unwrap()
-        .iter()
-        .enumerate()
-    {
-        let pt = parse_type(t);
-        PARAM_TYPES.lock().unwrap().insert(i as u64, pt);
+    let mut param_types = HashMap::new();
+
+    for (type_id, decl) in program_abi.types.iter().enumerate() {
+        let type_application = TypeApplication {
+            name: decl.type_field.clone(),
+            type_id,
+            type_arguments: decl.components.clone(),
+        };
+        let param_type = ParamType::try_from_type_application(&type_application, &type_lookup)?;
+        param_types.insert(type_id as u64, param_type);
     }
 
-    println!("> Param Types\n{:#?}", PARAM_TYPES.lock().unwrap());
+    *PARAM_TYPES.lock().unwrap() = param_types;
+
+    println!("> Param Types");
+    println!("{:#?}", PARAM_TYPES.lock().unwrap());
 
     // 3. map(type name => type id)
     let mut type_map = TYPE_MAP.lock().unwrap();
@@ -432,7 +426,7 @@ fn setup_globals(script_abi_path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn produce_data_type_id_map() -> anyhow::Result<BTreeMap<u64, String>> {
+fn produce_data_type_id_map() -> anyhow::Result<HashMap<u64, String>> {
     // Open the JSON file
     let path = "sway/scripts/produce-data/out/debug/produce-data-abi.json";
     let file = File::open(path).context(path.to_string())?;
@@ -446,7 +440,7 @@ fn produce_data_type_id_map() -> anyhow::Result<BTreeMap<u64, String>> {
     // Print the pretty-printed JSON
     println!("{}", pretty_json);
 
-    let mut types = BTreeMap::new();
+    let mut types = HashMap::new();
     for lt in json.get("types").unwrap().as_array().unwrap() {
         let type_name = lt.get("type").unwrap().as_str().unwrap();
         let type_id = lt.get("typeId").unwrap().as_u64().unwrap();
@@ -459,7 +453,7 @@ fn produce_data_type_id_map() -> anyhow::Result<BTreeMap<u64, String>> {
     Ok(types)
 }
 
-fn produce_data_logged_types_map() -> anyhow::Result<BTreeMap<u64, u64>> {
+fn produce_data_logged_types_map() -> anyhow::Result<HashMap<u64, u64>> {
     // Open the JSON file
     let path = "sway/scripts/produce-data/out/debug/produce-data-abi.json";
     let file = File::open(path).context(path.to_string())?;
@@ -468,7 +462,7 @@ fn produce_data_logged_types_map() -> anyhow::Result<BTreeMap<u64, u64>> {
     // Parse the JSON data
     let json: Value = serde_json::from_reader(reader)?;
 
-    let mut types = BTreeMap::new();
+    let mut types = HashMap::new();
     for lt in json.get("loggedTypes").unwrap().as_array().unwrap() {
         let log_id = lt.get("logId").unwrap().as_u64().unwrap();
         let type_id = lt
