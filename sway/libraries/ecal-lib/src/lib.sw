@@ -57,20 +57,16 @@ pub trait TypeName {
 }
 
 pub fn print_any<T>(t: T) where T: TypeName {
-    // println_str("print_any");
+    // For now, logging te value is necessary to ensure it makes it to the ABI
+    log(t);
+
     let type_name = T::type_name();
-    // println_str(type_name);
     let type_id = type_id(type_name);
-    // println_u64(type_id);
-    // let size = __size_of_val(t);
-    // println_str("size_of");
-    // println_u64(size);
 
     let data = (type_id, __addr_of(t), __size_of_val(t));
     let ptr = __addr_of(data);
     // r_a=8: print_any ecal
     asm(r_a: 8u64, r_b: ptr, r_c: 0u64, r_d: 0u64) {
         ecal r_a r_b r_c r_d;
-    }
-
+    };
 }

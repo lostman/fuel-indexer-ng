@@ -24,11 +24,8 @@ fn main(value: MyStruct) {
     let mos = MyOtherStruct { value: 33 };
     let mcs = MyComplexStruct { one: value, two: mos };
     print_any(mcs);
-    log(mos);
-    log(mcs);
 
     let s = S { value: (value, mos) };
-    log(s);
     print_any(s);
     
     println_str("MyStruct Indexer END");
