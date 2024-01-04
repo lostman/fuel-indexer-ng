@@ -56,6 +56,12 @@ fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     let abi_path = format!("sway/scripts/{script_name}/out/debug/{script_name}-abi.json");
     let abi = crate::abi::parse_abi(&abi_path).unwrap();
 
+    let mut schema = crate::abi::SchemaConstructor::new();
+    schema.process_program_abi(&abi);
+    for stmt in schema.statements() {
+        println!("{}", stmt);
+    }
+
     crate::abi::set_ecal_abi(abi);
     let script_path = format!("sway/scripts/{script_name}/out/debug/{script_name}.bin");
 
@@ -76,7 +82,7 @@ async fn main() {
         match r {
             Receipt::LogData { rb, data, .. } => {
                 let data = data.unwrap();
-                let type_id = data_abi.logged_types.get(&rb).unwrap();
+                let type_id = data_abi.logged_types.get(&(rb as usize)).unwrap();
                 let type_name = data_abi.types.get(type_id).unwrap().type_field.as_str();
 
                 if let Some(script_name) = indexers.get(type_name) {

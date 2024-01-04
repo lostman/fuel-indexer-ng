@@ -152,6 +152,7 @@ impl MyEcal {
             fuels::core::codec::try_from_bytes(&bytes, fuels::core::codec::DecoderConfig::default())
                 .unwrap()
         };
+        let type_id = type_id as usize;
 
         let data = {
             let r = MemoryRange::new(addr, size)?;
@@ -202,14 +203,14 @@ impl MyEcal {
 
         let type_id = crate::abi::type_id(&type_name);
 
-        vm.registers_mut()[rb] = type_id;
+        vm.registers_mut()[rb] = type_id as u64;
 
         Ok(())
     }
 }
 
 // Given a type id and encoded data, it pretty-prints the data.
-fn pretty_print(type_id: u64, tok: Token) -> String {
+fn pretty_print(type_id: usize, tok: Token) -> String {
     fn pretty_print_inner(indent: usize, decl: TypeDeclaration, tok: Token) -> String {
         match tok {
             Token::Unit => "()".to_string(),
@@ -221,7 +222,7 @@ fn pretty_print(type_id: u64, tok: Token) -> String {
                 let mut result = vec![];
                 for (i, field) in fields.into_iter().enumerate() {
                     let name: String = comps[i].name.clone();
-                    let type_id: u64 = comps[i].type_id as u64;
+                    let type_id: usize = comps[i].type_id;
                     let decl = crate::abi::type_declaration(type_id);
                     result
                         .push(" ".repeat(indent) + &name + " = " + &pretty_print_inner(indent, decl, field))
@@ -243,7 +244,7 @@ fn pretty_print(type_id: u64, tok: Token) -> String {
                 let comps = decl.components.unwrap();
                 let mut result = vec![];
                 for (i, field) in fields.into_iter().enumerate() {
-                    let type_id: u64 = comps[i].type_id as u64;
+                    let type_id: usize = comps[i].type_id as usize;
                     let decl = crate::abi::type_declaration(type_id);
                     result.push(" ".repeat(indent) + &pretty_print_inner(indent, decl, field))
                 }

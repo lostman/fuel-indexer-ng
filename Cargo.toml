@@ -16,3 +16,4 @@ serde_json = "*"
 lazy_static = "1.4.0"
 sqlx = { version = "0.7.3", features = ["postgres", "runtime-tokio-rustls"] }
 fuel-abi-types = "0.3.0"
+sqlparser = "0.41.0"
