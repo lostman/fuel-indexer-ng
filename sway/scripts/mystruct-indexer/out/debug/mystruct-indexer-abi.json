@@ -8,16 +8,21 @@
     },
     {
       "typeId": 1,
-      "type": "(_, _)",
+      "type": "struct MyComplexStruct",
       "components": [
         {
-          "name": "__tuple_element",
-          "type": 5,
+          "name": "one",
+          "type": 3,
           "typeArguments": null
         },
         {
-          "name": "__tuple_element",
-          "type": 4,
+          "name": "two",
+          "type": 2,
+          "typeArguments": null
+        },
+        {
+          "name": "three",
+          "type": 5,
           "typeArguments": null
         }
       ],
@@ -25,32 +30,10 @@
     },
     {
       "typeId": 2,
-      "type": "(_, _)",
+      "type": "struct MyOtherStruct",
       "components": [
         {
-          "name": "__tuple_element",
-          "type": 5,
-          "typeArguments": null
-        },
-        {
-          "name": "__tuple_element",
-          "type": 1,
-          "typeArguments": null
-        }
-      ],
-      "typeParameters": null
-    },
-    {
-      "typeId": 3,
-      "type": "struct MyComplexStruct",
-      "components": [
-        {
-          "name": "one",
-          "type": 5,
-          "typeArguments": null
-        },
-        {
-          "name": "two",
+          "name": "value",
           "type": 4,
           "typeArguments": null
         }
@@ -58,54 +41,30 @@
       "typeParameters": null
     },
     {
-      "typeId": 4,
-      "type": "struct MyOtherStruct",
-      "components": [
-        {
-          "name": "value",
-          "type": 7,
-          "typeArguments": null
-        }
-      ],
-      "typeParameters": null
-    },
-    {
-      "typeId": 5,
+      "typeId": 3,
       "type": "struct MyStruct",
       "components": [
         {
           "name": "one",
-          "type": 8,
+          "type": 5,
           "typeArguments": null
         },
         {
           "name": "two",
-          "type": 8,
+          "type": 5,
           "typeArguments": null
         }
       ],
       "typeParameters": null
     },
     {
-      "typeId": 6,
-      "type": "struct S",
-      "components": [
-        {
-          "name": "value",
-          "type": 2,
-          "typeArguments": null
-        }
-      ],
-      "typeParameters": null
-    },
-    {
-      "typeId": 7,
+      "typeId": 4,
       "type": "u32",
       "components": null,
       "typeParameters": null
     },
     {
-      "typeId": 8,
+      "typeId": 5,
       "type": "u64",
       "components": null,
       "typeParameters": null
@@ -115,8 +74,8 @@
     {
       "inputs": [
         {
-          "name": "value",
-          "type": 5,
+          "name": "mystruct",
+          "type": 3,
           "typeArguments": null
         }
       ],
@@ -134,7 +93,7 @@
       "logId": 0,
       "loggedType": {
         "name": "",
-        "type": 5,
+        "type": 1,
         "typeArguments": []
       }
     },
@@ -142,15 +101,7 @@
       "logId": 1,
       "loggedType": {
         "name": "",
-        "type": 3,
-        "typeArguments": []
-      }
-    },
-    {
-      "logId": 2,
-      "loggedType": {
-        "name": "",
-        "type": 6,
+        "type": 1,
         "typeArguments": []
       }
     }

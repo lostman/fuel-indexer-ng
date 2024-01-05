@@ -15,7 +15,7 @@ fn main() -> MyStruct {
 
     log((value_2, value_1));
 
-    let complex = MyComplexStruct { one: value_1, two: value_2 };
+    let complex = MyComplexStruct { one: value_1, two: value_2, three: 123 };
     log(complex);
 
     value_1

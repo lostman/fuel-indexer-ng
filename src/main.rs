@@ -59,7 +59,7 @@ fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     let mut schema = crate::abi::SchemaConstructor::new();
     schema.process_program_abi(&abi);
     for stmt in schema.statements() {
-        println!("{}", stmt);
+        println!("{};", stmt);
     }
 
     crate::abi::set_ecal_abi(abi);

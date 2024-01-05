@@ -31,6 +31,8 @@ impl EcalHandler for MyEcal {
             0 => Self::read_file_ecal(vm, ra, rb, rc, rd),
             1 => Self::println_str_ecal(vm, ra, rb, rc, rd),
             2 => Self::println_u64_ecal(vm, ra, rb, rc, rd),
+            3 => Self::save(vm, ra, rb, rc, rd),
+            4 => Self::load(vm, ra, rb, rc, rd),
             7 => Self::type_id_ecal(vm, ra, rb, rc, rd),
             8 => Self::print_any_ecal(vm, ra, rb, rc, rd),
             _ => panic!("Unexpected ECAL function number {a}"),
@@ -39,6 +41,55 @@ impl EcalHandler for MyEcal {
 }
 
 impl MyEcal {
+    fn save<S, Tx>(
+        vm: &mut Interpreter<S, Tx, Self>,
+        _ra: RegId,
+        rb: RegId,
+        _rc: RegId,
+        _rd: RegId,
+    ) -> SimpleResult<()> {
+        println!("> save");
+        let (type_id, addr, size): (u64, u64, u64) = {
+            let addr = vm.registers()[rb];
+            let r = MemoryRange::new(addr, 3 * 8)?;
+            let bytes: [u8; 3 * 8] = vm.memory()[r.usizes()].try_into().unwrap();
+            fuels::core::codec::try_from_bytes(&bytes, fuels::core::codec::DecoderConfig::default())
+                .unwrap()
+        };
+        let type_id = type_id as usize;
+
+        let data = {
+            let r = MemoryRange::new(addr, size)?;
+            let mut bytes = Vec::with_capacity(size as usize);
+            bytes.extend_from_slice(&vm.memory()[r.usizes()]);
+            bytes
+        };
+
+        let param_type = crate::abi::param_type(type_id);
+        let tokens = ABIDecoder::new(DecoderConfig::default())
+            .decode(&param_type, data.as_ref())
+            .unwrap();
+        println!("> save_any = {tokens:?}");
+        let mut stmts = save_any(type_id, tokens);
+        let last = stmts.pop().unwrap();
+        let stmts = stmts.join(", ");
+        let stmt = format!("WITH {stmts} {last}");
+        println!("{stmt}");
+
+        Ok(())
+    }
+
+    fn load<S, Tx>(
+        vm: &mut Interpreter<S, Tx, Self>,
+        _ra: RegId,
+        rb: RegId,
+        _rc: RegId,
+        _rd: RegId,
+    ) -> SimpleResult<()> {
+        println!("> load");
+        Ok(())
+    }
+
     fn read_file_ecal<S, Tx>(
         vm: &mut Interpreter<S, Tx, Self>,
         _ra: RegId,
@@ -224,8 +275,12 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
                     let name: String = comps[i].name.clone();
                     let type_id: usize = comps[i].type_id;
                     let decl = crate::abi::type_declaration(type_id);
-                    result
-                        .push(" ".repeat(indent) + &name + " = " + &pretty_print_inner(indent, decl, field))
+                    result.push(
+                        " ".repeat(indent)
+                            + &name
+                            + " = "
+                            + &pretty_print_inner(indent, decl, field),
+                    )
                 }
 
                 let type_name = decl
@@ -255,4 +310,83 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
     }
     let decl = crate::abi::type_declaration(type_id);
     pretty_print_inner(0, decl, tok)
+}
+
+// WITH
+//   id_a AS (insert INTO table_a (one) values (434) RETURNING id),
+//   id_b AS (insert INTO table_b (two) VALUES (123) RETURNING id)
+//   (SELECT id_a.id as id_a, id_b.id as id_b, "Some Other Value" FROM id_a, id_b);
+
+fn save_any(type_id: usize, tok: Token) -> Vec<String> {
+    let mut stack = vec![(crate::abi::type_declaration(type_id), tok)];
+    let mut stmts = vec![];
+    while let Some((top, Token::Struct(toks))) = stack.last() {
+        let struct_name = top.type_field.strip_prefix("struct ").unwrap();
+        let columns: Vec<String> = top
+            .components
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|field| field.name.clone())
+            .collect();
+        let columns = columns.join(", ");
+        if has_nested_struct(&top) {
+            let mut selects: Vec<String> = vec![];
+            let mut sources: Vec<String> = vec![];
+            for (i, field) in top.components.as_ref().unwrap().iter().enumerate() {
+                let field_decl = crate::abi::type_declaration(field.type_id);
+                if is_struct(&field_decl) {
+                    let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
+                    let nested_stmts = save_any(field_decl.type_id, toks[i].clone());
+                    stmts.push(nested_stmts);
+                    selects.push(format!("{field_struct_name}_id.id AS {}", field.name));
+                    sources.push(format!("{field_struct_name}_id"))
+                } else {
+                    selects.push(tok_to_string(&toks[i]))
+                }
+            }
+            let selects = selects.join(", ");
+            let sources = sources.join(", ");
+            let stmt = format!("INSERT INTO {struct_name} ({columns}) (SELECT {selects} FROM {sources}) RETURNING id");
+            stmts.push(vec![stmt]);
+            stack.pop();
+        } else {
+            let values: Vec<String> = toks.iter().map(tok_to_string).collect();
+            let values = values.join(", ");
+            let stmt = format!("{struct_name}_id AS (INSERT INTO {struct_name} ({columns}) VALUES ({values}) RETURNING id)");
+            stmts.push(vec![stmt]);
+            stack.pop();
+        }
+    }
+    stmts.into_iter().flatten().collect()
+}
+
+fn tok_to_string(tok: &Token) -> String {
+    match tok {
+        Token::U32(x) => format!("{x}"),
+        Token::U64(x) => format!("{x}"),
+        _ => unimplemented!("{tok:?}"),
+    }
+}
+
+fn decl_fields(decl: &TypeDeclaration) -> Vec<TypeDeclaration> {
+    let mut result = vec![];
+    for field in decl.components.as_ref().unwrap() {
+        let field_decl = crate::abi::type_declaration(field.type_id);
+        result.push(field_decl)
+    }
+    result
+}
+
+fn is_struct(decl: &TypeDeclaration) -> bool {
+    decl.type_field.starts_with("struct")
+}
+
+fn has_nested_struct(decl: &TypeDeclaration) -> bool {
+    for field_decl in decl_fields(decl) {
+        if is_struct(&field_decl) {
+            return true;
+        }
+    }
+    false
 }

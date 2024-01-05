@@ -47,6 +47,11 @@
           "name": "two",
           "type": 3,
           "typeArguments": null
+        },
+        {
+          "name": "three",
+          "type": 6,
+          "typeArguments": null
         }
       ],
       "typeParameters": null

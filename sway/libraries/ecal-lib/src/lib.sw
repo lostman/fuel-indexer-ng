@@ -70,3 +70,31 @@ pub fn print_any<T>(t: T) where T: TypeName {
         ecal r_a r_b r_c r_d;
     };
 }
+
+pub fn save<T>(t: T) where T: TypeName {
+    // For now, logging te value is necessary to ensure it makes it to the ABI
+    log(t);
+
+    let type_name = T::type_name();
+    let type_id = type_id(type_name);
+
+    let data = (type_id, __addr_of(t), __size_of_val(t));
+    let ptr = __addr_of(data);
+    // r_a=3: save ecal
+    asm(r_a: 3u64, r_b: ptr, r_c: 0u64, r_d: 0u64) {
+        ecal r_a r_b r_c r_d;
+    };
+}
+
+pub fn load<T>(id: u64) -> T where T: TypeName {
+    let type_name = T::type_name();
+    let type_id = type_id(type_name);
+
+    let data = (type_id, id);
+    let ptr = __addr_of(data);
+    // r_a=4: load ecal
+    asm(r_a: 4u64, r_b: ptr, r_c: 0u64, r_d: 0u64) {
+        ecal r_a r_b r_c r_d;
+        r_b: T
+    }
+}

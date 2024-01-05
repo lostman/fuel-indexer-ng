@@ -13,7 +13,8 @@ pub struct MyOtherStruct {
 
 pub struct MyComplexStruct {
     one: MyStruct,
-    two: MyOtherStruct
+    two: MyOtherStruct,
+    three: u64,
 }
 
 impl TypeName for MyStruct {
@@ -33,3 +34,25 @@ impl TypeName for MyComplexStruct {
         "struct MyComplexStruct"
     }
 }
+
+// Stored in the database
+
+// pub struct MyComplexStructEntity {
+//     one: Entity<MyStruct>,
+//     two: Entity<MyOtherStruct>,
+// }
+
+// type ID = u64;
+
+// pub struct Entity<T> {
+//     id: ID,
+//     value: T,
+// }
+
+// fn foo() {
+//     let mystruct = MyStruct { one: 7, two: 8 };
+//     let mystruct_entity: Entity<MyStruct> = Entity { id: 1, value: mystruct };
+
+//     let myotherstruct = MyOtherStruct { value: 77 };
+//     let myotherstruct_entity: Entity<MyOtherStruct> = Entity { id: 1, value: myotherstruct };
+// }

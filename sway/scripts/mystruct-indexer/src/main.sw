@@ -3,30 +3,42 @@ script;
 use std::string::String;
 
 use my_contract_lib::{MyStruct, MyOtherStruct, MyComplexStruct};
-use ecal_lib::{println, println_str, println_u64, print_any, read_file_raw, TypeName};
+use ecal_lib::{println, println_str, println_u64, print_any, read_file_raw, save, load, TypeName};
 
-struct S {
-    value: (MyStruct, (MyStruct, MyOtherStruct))
-}
-
-impl TypeName for S {
-    fn type_name() -> str {
-        "struct S"
-    }
-}
-
-fn main(value: MyStruct) {
+fn main(mystruct: MyStruct) {
     println_str("MyStruct Indexer START");
-    print_any(value);
-    println_u64(value.one);
-    println_u64(value.two);
 
-    let mos = MyOtherStruct { value: 33 };
-    let mcs = MyComplexStruct { one: value, two: mos };
-    print_any(mcs);
+    let myotherstruct = MyOtherStruct {
+        value: 33
+    };
 
-    let s = S { value: (value, (value, mos)) };
-    print_any(s);
+    let mycomplexstruct = MyComplexStruct {
+        one: mystruct,
+        two: myotherstruct,
+        three: 99,
+    };
+
+    // Generic pretty-print ECAL
+    print_any(mycomplexstruct);
+
+    // Store in the database ECAL
+    save(mycomplexstruct);
     
     println_str("MyStruct Indexer END");
 }
+
+
+
+// struct S {
+//     value: (MyStruct, (MyStruct, MyOtherStruct))
+// }
+
+// impl TypeName for S {
+//     fn type_name() -> str {
+//         "struct S"
+//     }
+// }
+
+    // let s = S { value: (value, (value, mos)) };
+    // print_any(s);
+    // let s: S = load::<S>(1);

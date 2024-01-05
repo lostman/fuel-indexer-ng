@@ -9,7 +9,9 @@ use fuels::types::param_types::ParamType;
 
 mod sql {
     pub use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
-    pub use sqlparser::ast::{ColumnDef, DataType, Ident, ObjectName, Statement};
+    pub use sqlparser::ast::{
+        ColumnDef, ColumnOption, ColumnOptionDef, DataType, Ident, ObjectName, Statement,
+    };
 }
 
 lazy_static! {
@@ -188,7 +190,7 @@ impl SchemaConstructor {
         struct_fields: &Vec<TypeApplication>,
     ) {
         let type_lookup = HashMap::from_iter(abi.types.clone());
-        let columns: Vec<sql::ColumnDef> = struct_fields
+        let mut columns: Vec<sql::ColumnDef> = struct_fields
             .iter()
             .map(|type_application| {
                 let param_type =
@@ -197,6 +199,9 @@ impl SchemaConstructor {
             })
             .flatten()
             .collect();
+        columns.push(Self::pk_column());
+        // move 'id' column to the front
+        columns.rotate_right(1);
 
         let table_name = sql::ObjectName(vec![sql::Ident::new(struct_name)]);
         let builder = sql::CreateTableBuilder::new(table_name)
@@ -208,8 +213,8 @@ impl SchemaConstructor {
 
     fn process_param_type(name: &str, param_type: ParamType) -> Vec<sql::ColumnDef> {
         match param_type {
-            ParamType::U64 => Self::one_column(name, sql::DataType::UnsignedBigInt(None)),
-            ParamType::U32 => Self::one_column(name, sql::DataType::UnsignedInteger(None)),
+            ParamType::U64 => Self::one_column(name, sql::DataType::BigInt(None)),
+            ParamType::U32 => Self::one_column(name, sql::DataType::Integer(None)),
             ParamType::Struct { .. } => Self::one_column(name, sql::DataType::BigInt(None)),
             ParamType::Tuple(elems) => {
                 let mut columns = vec![];
@@ -234,6 +239,22 @@ impl SchemaConstructor {
             data_type,
             collation: None,
             options: vec![],
+        }
+    }
+
+    // id SERIAL PRIMARY KEY
+    fn pk_column() -> sql::ColumnDef {
+        sql::ColumnDef {
+            name: sql::Ident::new("id"),
+            data_type: sql::DataType::Custom(
+                sqlparser::ast::ObjectName(vec!["SERIAL".into()]),
+                vec![],
+            ),
+            collation: None,
+            options: vec![sql::ColumnOptionDef {
+                name: None,
+                option: sql::ColumnOption::Unique { is_primary: true },
+            }],
         }
     }
 }
