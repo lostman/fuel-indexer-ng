@@ -15,6 +15,11 @@ use fuel_vm::{
 use fuels::core::codec::{ABIDecoder, DecoderConfig};
 use fuels::types::Token;
 
+fuels::macros::abigen!(Contract(
+    name = "MyContract",
+    abi = "sway/scripts/mystruct-indexer/out/debug/mystruct-indexer-abi.json"
+));
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MyEcal;
 
@@ -48,7 +53,7 @@ impl MyEcal {
         _rc: RegId,
         _rd: RegId,
     ) -> SimpleResult<()> {
-        println!("> save");
+        println!("> ECAL::save()");
         let (type_id, addr, size): (u64, u64, u64) = {
             let addr = vm.registers()[rb];
             let r = MemoryRange::new(addr, 3 * 8)?;
@@ -69,7 +74,7 @@ impl MyEcal {
         let tokens = ABIDecoder::new(DecoderConfig::default())
             .decode(&param_type, data.as_ref())
             .unwrap();
-        println!("> save_any = {tokens:?}");
+        println!("> save = {tokens:?}");
         let mut stmts = save_any(type_id, tokens);
         let last = stmts.pop().unwrap();
         let stmts = stmts.join(", ");
@@ -86,7 +91,42 @@ impl MyEcal {
         _rc: RegId,
         _rd: RegId,
     ) -> SimpleResult<()> {
-        println!("> load");
+        let type_id = vm.registers()[rb];
+        println!("> ECAL::load(type_id={type_id})");
+
+        let struct_name = crate::abi::type_declaration(type_id as usize)
+            .type_field
+            .strip_prefix("struct ")
+            .unwrap()
+            .to_string();
+        let (selects, joins, types) = load_any(type_id as usize);
+        let selects = selects.join(", ");
+        let joins = joins.join(" ");
+
+        let types: Vec<fuels::types::param_types::ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
+        // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
+        let result = format!("SELECT {selects} FROM {struct_name} {joins} LIMIT 1");
+
+        println!("RESULT:\n{result:#?}\n{types:#?}");
+
+        // 1. Create a value of type MyStruct
+        // 2. Encode it and store in the VM memory
+
+        let output = Some(MyComplexStruct::new(
+            MyStruct::new(1, 2),
+            MyOtherStruct::new(77),
+            9999,
+        ));
+
+        let output_bytes: Vec<u8> =
+            fuels::core::codec::calldata!(output).expect("Failed to encode output tuple");
+        vm.allocate(output_bytes.len() as u64)?;
+        let o = MemoryRange::new(vm.registers()[RegId::HP], output_bytes.len())?;
+        vm.memory_mut()[o.usizes()].copy_from_slice(&output_bytes);
+
+        // Return the address of the output tuple through the rB register
+        vm.registers_mut()[rb] = o.start as u64;
+
         Ok(())
     }
 
@@ -313,11 +353,121 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
 }
 
 // WITH
+//   MyStruct as (select one, two from mystruct),
+//   MyOtherStruct as (select (value) from myotherstruct) (select * from MyStruct, MyOtherStruct);
+
+use std::collections::{BTreeMap, VecDeque};
+
+fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
+    let mut queue = VecDeque::from(vec![crate::abi::type_declaration(type_id)]);
+    let mut struct_queries = BTreeMap::new();
+    let mut struct_columns: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut selects: Vec<String> = vec![];
+    let mut joins: Vec<String> = vec![];
+    let mut types: Vec<usize> = vec![];
+    while let Some(front) = queue.pop_front() {
+        let struct_name = front
+            .type_field
+            .strip_prefix("struct ")
+            .unwrap()
+            .to_string();
+        let columns: Vec<String> = front
+            .components
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|field| field.name.clone())
+            .collect();
+        struct_columns.insert(struct_name.clone(), columns.clone());
+        let struct_query = format!("{struct_name} AS (SELECT * FROM {struct_name})");
+        struct_queries.insert(struct_name.clone(), struct_query);
+
+        for (i, field) in front.components.as_ref().unwrap().iter().enumerate() {
+            let field_decl = crate::abi::type_declaration(field.type_id);
+            if is_struct(&field_decl) {
+                let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
+                joins.push(format!(
+                    "LEFT JOIN {field_struct_name} ON {struct_name}.{field_name} = {field_struct_name}.id",
+                    field_name = field.name
+                ));
+                let (nested_selects, nested_joins, nested_types) = load_any(field.type_id);
+                println!("NESTED:\n{nested_selects:#?}\n{nested_joins:#?}");
+
+                // selects.push(struct_columns.get(field_struct_name).expect(&format!("{field_struct_name}")).to_owned());
+                selects.extend(nested_selects);
+                joins.extend(nested_joins);
+                types.extend(nested_types);
+            } else {
+                selects.push(format!("{struct_name}.{}", field.name));
+                types.push(field.type_id);
+            }
+        }
+    }
+    println!("> LOAD_ANY:");
+    println!("{:#?}", struct_queries);
+    println!("{:#?}", selects);
+    (selects, joins, types)
+}
+
+fn load_any_2(type_id: usize) -> (Vec<Vec<String>>, BTreeMap<String, String>) {
+    let mut queue = VecDeque::from(vec![crate::abi::type_declaration(type_id)]);
+    let mut struct_queries = BTreeMap::new();
+    let mut struct_columns: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut selects: Vec<Vec<String>> = vec![];
+    while let Some(front) = queue.pop_front() {
+        let struct_name = front
+            .type_field
+            .strip_prefix("struct ")
+            .unwrap()
+            .to_string();
+        let columns: Vec<String> = front
+            .components
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|field| field.name.clone())
+            .collect();
+        struct_columns.insert(struct_name.clone(), columns.clone());
+        let struct_query = format!("{struct_name} AS (SELECT * FROM {struct_name})");
+        struct_queries.insert(struct_name.clone(), struct_query);
+
+        if has_nested_struct(&front) {
+            for (i, field) in front.components.as_ref().unwrap().iter().enumerate() {
+                let field_decl = crate::abi::type_declaration(field.type_id);
+                if is_struct(&field_decl) {
+                    // queue.push_back(field_decl.clone());
+                    let (inner_selects, inner_struct_queries) = load_any_2(field.type_id);
+                    println!("INNER:\n{inner_selects:#?}\n{inner_struct_queries:#?}");
+                    // let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
+                    // selects.push(struct_columns.get(field_struct_name).expect(&format!("{field_struct_name}")).to_owned());
+                    selects.extend(inner_selects);
+                    struct_queries.extend(inner_struct_queries);
+                } else {
+                    selects.push(vec![format!("{struct_name}.{}", field.name)]);
+                }
+            }
+        } else {
+            selects.push(
+                columns
+                    .iter()
+                    .map(|c| format!("{struct_name}.{c}"))
+                    .collect(),
+            )
+        }
+    }
+    println!("> LOAD_ANY:");
+    println!("{:#?}", struct_queries);
+    println!("{:#?}", selects);
+    (selects, struct_queries)
+}
+
+// WITH
 //   id_a AS (insert INTO table_a (one) values (434) RETURNING id),
 //   id_b AS (insert INTO table_b (two) VALUES (123) RETURNING id)
 //   (SELECT id_a.id as id_a, id_b.id as id_b, "Some Other Value" FROM id_a, id_b);
 
 fn save_any(type_id: usize, tok: Token) -> Vec<String> {
+    // TODO: do not need a stack here. `save_any` is recursive
     let mut stack = vec![(crate::abi::type_declaration(type_id), tok)];
     let mut stmts = vec![];
     while let Some((top, Token::Struct(toks))) = stack.last() {

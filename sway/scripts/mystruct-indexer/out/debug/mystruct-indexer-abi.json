@@ -104,6 +104,14 @@
         "type": 1,
         "typeArguments": []
       }
+    },
+    {
+      "logId": 2,
+      "loggedType": {
+        "name": "",
+        "type": 1,
+        "typeArguments": []
+      }
     }
   ],
   "messagesTypes": [],

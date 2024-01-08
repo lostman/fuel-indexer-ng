@@ -9,7 +9,7 @@ pub fn read_file_raw(seek: u64, len: u64, path: str) -> raw_slice {
     let ptr = __addr_of(data);
     // r_a=0: read_file ecal
     // r_b: arguments/result pointer
-    asm(ptr: ptr, r_a: 0, r_c: 0, r_d: 0) {
+    asm(r_a: 0, ptr: ptr, r_c: 0, r_d: 0) {
         ecal r_a ptr r_c r_d;
     };
     asm(ptr: ptr) {
@@ -48,7 +48,7 @@ pub fn type_id(input: str) -> u64 {
     }
 }
 
-pub trait TypeID {
+pub trait TypeID: TypeName {
     fn type_id() -> u64;
 }
 
@@ -86,15 +86,30 @@ pub fn save<T>(t: T) where T: TypeName {
     };
 }
 
-pub fn load<T>(id: u64) -> T where T: TypeName {
+pub fn load<T>(_filter: Filter<T>) -> Option<T> where T: TypeName {
     let type_name = T::type_name();
     let type_id = type_id(type_name);
 
-    let data = (type_id, id);
-    let ptr = __addr_of(data);
     // r_a=4: load ecal
-    asm(r_a: 4u64, r_b: ptr, r_c: 0u64, r_d: 0u64) {
+    asm(r_a: 4u64, r_b: type_id, r_c: 0u64, r_d: 0u64) {
         ecal r_a r_b r_c r_d;
-        r_b: T
+        r_b: Option<T>
+    }
+}
+
+pub struct PhantomData<T> {}
+
+pub struct Field<T, F> {
+    field: u64,
+    phantom: PhantomData<(T, F)>,
+}
+
+pub struct Filter<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T, F> Field<T, F> {
+    pub fn eq(self, _val: F) -> Filter<T> {
+        Filter { phantom: PhantomData::<T>{} }
     }
 }

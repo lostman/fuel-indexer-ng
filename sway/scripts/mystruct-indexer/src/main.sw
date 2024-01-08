@@ -2,8 +2,8 @@ script;
 
 use std::string::String;
 
-use my_contract_lib::{MyStruct, MyOtherStruct, MyComplexStruct};
-use ecal_lib::{println, println_str, println_u64, print_any, read_file_raw, save, load, TypeName};
+use my_contract_lib::*;
+use ecal_lib::{println, println_str, println_u64, print_any, read_file_raw, TypeName};
 
 fn main(mystruct: MyStruct) {
     println_str("MyStruct Indexer START");
@@ -22,7 +22,15 @@ fn main(mystruct: MyStruct) {
     print_any(mycomplexstruct);
 
     // Store in the database ECAL
-    save(mycomplexstruct);
+    ecal_lib::save(mycomplexstruct);
+
+    // Find MyComplexStruct value such that field .one contains MyStruct value such that its field .value contains 33
+    let x: MyComplexStruct = ecal_lib::load(
+        MyComplexStruct::one().eq(
+            ecal_lib::find(MyStruct::value().eq(33)).unwrap()
+        )).unwrap();
+    println_str("Loaded value:");
+    print_any(x);
     
     println_str("MyStruct Indexer END");
 }

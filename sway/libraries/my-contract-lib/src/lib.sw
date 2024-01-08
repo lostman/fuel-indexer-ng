@@ -1,6 +1,6 @@
 library;
 
-use ecal_lib::{TypeID, TypeName};
+use ecal_lib::{TypeID, TypeName, Field, PhantomData};
 
 pub struct MyStruct {
     one: u64,
@@ -35,24 +35,55 @@ impl TypeName for MyComplexStruct {
     }
 }
 
-// Stored in the database
+impl TypeID for MyStruct {
+    fn type_id() -> u64 {
+        ecal_lib::type_id(Self::type_name())
+    }
+}
 
-// pub struct MyComplexStructEntity {
-//     one: Entity<MyStruct>,
-//     two: Entity<MyOtherStruct>,
-// }
+impl TypeID for MyOtherStruct {
+    fn type_id() -> u64 {
+        ecal_lib::type_id(Self::type_name())
+    }
+}
 
-// type ID = u64;
+impl TypeID for MyComplexStruct {
+    fn type_id() -> u64 {
+        ecal_lib::type_id(Self::type_name())
+    }
+}
 
-// pub struct Entity<T> {
-//     id: ID,
-//     value: T,
-// }
+//
+// These would be generated from THE ABI
+//
 
-// fn foo() {
-//     let mystruct = MyStruct { one: 7, two: 8 };
-//     let mystruct_entity: Entity<MyStruct> = Entity { id: 1, value: mystruct };
+impl MyStruct {
+    pub fn value() -> Field<MyStruct, u64> {
+    Field {
+            field: 0,
+            phantom: PhantomData::<(MyStruct, u64)>{},
+        }
+    }
+}
 
-//     let myotherstruct = MyOtherStruct { value: 77 };
-//     let myotherstruct_entity: Entity<MyOtherStruct> = Entity { id: 1, value: myotherstruct };
-// }
+impl MyComplexStruct {
+    pub fn one() -> Field<MyComplexStruct, MyStruct> {
+    Field {
+            field: 0,
+            phantom: PhantomData::<(MyComplexStruct, MyStruct)>{},
+        }
+    }
+
+    pub fn two() -> Field<MyComplexStruct, MyOtherStruct> {
+        Field {
+            field: 1,
+            phantom: PhantomData::<(MyComplexStruct, MyOtherStruct)>{},
+        }
+    }
+    pub fn three() -> Field<MyComplexStruct, u64> {
+        Field {
+            field: 2,
+            phantom: PhantomData::<(MyComplexStruct, u64)>{},
+        }
+    }
+}
