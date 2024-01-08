@@ -12,13 +12,22 @@ use fuel_vm::{
     interpreter::EcalHandler,
     prelude::{Interpreter, MemoryRange},
 };
-use fuels::core::codec::{ABIDecoder, DecoderConfig};
+use fuels::core::codec::{ABIDecoder, ABIEncoder, DecoderConfig};
+use fuels::types::param_types::ParamType;
 use fuels::types::Token;
 
 fuels::macros::abigen!(Contract(
     name = "MyContract",
     abi = "sway/scripts/mystruct-indexer/out/debug/mystruct-indexer-abi.json"
 ));
+
+use sqlx::{Pool, Postgres, Row};
+
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    pub static ref DB: Mutex<Option<Pool<Postgres>>> = Mutex::new(None);
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MyEcal;
@@ -79,7 +88,11 @@ impl MyEcal {
         let last = stmts.pop().unwrap();
         let stmts = stmts.join(", ");
         let stmt = format!("WITH {stmts} {last}");
-        println!("{stmt}");
+        println!("SAVE_STMT: {stmt}");
+        let rows_affected = futures::executor::block_on(
+            sqlx::query(&stmt).execute(DB.lock().unwrap().as_ref().unwrap()),
+        ).unwrap().rows_affected();
+        println!("ROWS_AFFECTED: {rows_affected}");
 
         Ok(())
     }
@@ -103,23 +116,63 @@ impl MyEcal {
         let selects = selects.join(", ");
         let joins = joins.join(" ");
 
-        let types: Vec<fuels::types::param_types::ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
+        let types: Vec<ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
         // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
-        let result = format!("SELECT {selects} FROM {struct_name} {joins} LIMIT 1");
+        let query_string = format!("SELECT {selects} FROM {struct_name} {joins} LIMIT 1");
 
-        println!("RESULT:\n{result:#?}\n{types:#?}");
+        println!("LOAD_QUERY_STRING:\n{query_string:#?}\n{types:#?}");
 
-        // 1. Create a value of type MyStruct
-        // 2. Encode it and store in the VM memory
+        let query = sqlx::query(&query_string);
+        // let rt = tokio::runtime::Handle::current();
+        let row: sqlx::postgres::PgRow =
+            futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap()))
+                .unwrap();
 
-        let output = Some(MyComplexStruct::new(
-            MyStruct::new(1, 2),
-            MyOtherStruct::new(77),
-            9999,
-        ));
+        let mut tokens = VecDeque::new();
+        for (index, t) in types.iter().enumerate() {
+            let tok = match t {
+                ParamType::U64 => Token::U64(row.get::<i64, usize>(index) as u64),
+                ParamType::U32 => Token::U32(row.get::<i32, usize>(index) as u32),
+                _ => unimplemented!(),
+            };
+            tokens.push_back(tok);
+        }
 
-        let output_bytes: Vec<u8> =
-            fuels::core::codec::calldata!(output).expect("Failed to encode output tuple");
+        let decl = crate::abi::type_declaration(type_id as usize);
+
+        fn convert(
+            index: &mut usize,
+            row: &sqlx::postgres::PgRow,
+            decl: TypeDeclaration,
+            params: &mut VecDeque<ParamType>,
+        ) -> Token {
+            println!("CONVERT: {index} {decl:#?} {params:#?}");
+            if is_struct(&decl) {
+                let mut struct_tokens = vec![];
+                for field in decl.components.unwrap().iter() {
+                    let field_decl = crate::abi::type_declaration(field.type_id);
+                    let field_tokens = convert(index, row, field_decl, params);
+                    struct_tokens.push(field_tokens)
+                }
+                Token::Struct(struct_tokens)
+            } else {
+                let field_token = match params.pop_front().unwrap() {
+                    ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
+                    ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
+                    _ => unimplemented!(),
+                };
+                *index += 1;
+                field_token
+            }
+        }
+
+        let struct_token = convert(&mut 0, &row, decl, &mut types.into());
+        println!("XX: {struct_token:#?}");
+        println!("{}", pretty_print(type_id as usize, struct_token.clone()));
+        println!("XX_DONE");
+
+        let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
+
         vm.allocate(output_bytes.len() as u64)?;
         let o = MemoryRange::new(vm.registers()[RegId::HP], output_bytes.len())?;
         vm.memory_mut()[o.usizes()].copy_from_slice(&output_bytes);

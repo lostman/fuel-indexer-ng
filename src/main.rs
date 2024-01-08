@@ -69,8 +69,16 @@ fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     println!("{receipts:#?}");
 }
 
+use sqlx::{Pool, Postgres};
+
 #[tokio::main]
 async fn main() {
+    // let conn_url =
+    //     std::env::var("DATABASE_URL").expect("Env var DATABASE_URL is required for this example.");
+    let conn_url = "postgresql://postgres:postgres@localhost";
+    let pool: Pool<Postgres> = sqlx::PgPool::connect(&conn_url).await.unwrap();
+    *crate::ecal::DB.lock().unwrap() = Some(pool); 
+
     let indexers = HashMap::from([
         ("struct MyStruct", "mystruct-indexer"),
         // ("struct MyOtherStruct", "myotherstruct-indexer"),
