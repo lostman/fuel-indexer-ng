@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::collections::HashMap;
+use std::collections::{HashMap};
 use std::{fs::File, io::Read};
 
 use fuel_tx::{ConsensusParameters, Finalizable, Receipt, Script, TransactionBuilder};
@@ -10,6 +10,7 @@ use fuel_vm::{
 
 mod abi;
 mod ecal;
+mod prisma;
 
 use crate::abi::ABI;
 use crate::ecal::MyEcal;
@@ -56,9 +57,12 @@ fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     let abi_path = format!("sway/scripts/{script_name}/out/debug/{script_name}-abi.json");
     let abi = crate::abi::parse_abi(&abi_path).unwrap();
 
-    let mut schema = crate::abi::SchemaConstructor::new();
-    schema.process_program_abi(&abi);
-    for stmt in schema.statements() {
+    crate::prisma::schema_from_abi(&abi.types);
+
+    println!(">> DATABASE SCHEMA");
+    let mut db_schema = crate::abi::SchemaConstructor::new();
+    db_schema.process_program_abi(&abi);
+    for stmt in db_schema.statements() {
         println!("{};", stmt);
     }
 
@@ -77,7 +81,7 @@ async fn main() {
     //     std::env::var("DATABASE_URL").expect("Env var DATABASE_URL is required for this example.");
     let conn_url = "postgresql://postgres:postgres@localhost";
     let pool: Pool<Postgres> = sqlx::PgPool::connect(&conn_url).await.unwrap();
-    *crate::ecal::DB.lock().unwrap() = Some(pool); 
+    *crate::ecal::DB.lock().unwrap() = Some(pool);
 
     let indexers = HashMap::from([
         ("struct MyStruct", "mystruct-indexer"),
@@ -94,10 +98,10 @@ async fn main() {
                 let type_name = data_abi.types.get(type_id).unwrap().type_field.as_str();
 
                 if let Some(script_name) = indexers.get(type_name) {
-                    println!("> Running '{script_name}' indexer script for type {type_name}");
+                    println!(">> Running '{script_name}' indexer script for type {type_name}");
                     run_indexer_script(&script_name, data);
                 } else {
-                    println!("> No indexer script for type {type_name}");
+                    println!(">> No indexer script for type {type_name}");
                 }
             }
             _ => (),

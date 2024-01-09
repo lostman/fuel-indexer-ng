@@ -79,7 +79,7 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
     reader.read_to_string(&mut buf)?;
 
     let program_abi: ProgramABI = serde_json::from_str(&buf)?;
-    println!("> ABI:{program_abi:#?}");
+    println!(">> ABI:\n{program_abi:#?}");
 
     let type_lookup = program_abi
         .types
@@ -90,12 +90,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         .collect::<HashMap<_, _>>();
 
     let json: serde_json::Value = serde_json::from_str(&buf)?;
-
-    let pretty_json = serde_json::to_string_pretty(&json)?;
-
-    // Print the pretty-printed JSON
-    println!("> ABI");
-    println!("{pretty_json}");
 
     // 1. Store contents of "types" for generic struct processing
     let mut types = BTreeMap::new();
@@ -113,7 +107,7 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         types.insert(type_id, decl.clone());
     }
 
-    println!("> Param Types");
+    println!(">> PARAM_TYPES");
     println!("{:#?}", param_types);
 
     // 3. map(type name => type id)
@@ -124,7 +118,7 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         type_ids.insert(type_name.to_string(), type_id);
     }
 
-    println!("> Type ID Map");
+    println!(">> TYPE_ID_MAP");
     println!("{:#?}", type_ids);
 
     let mut logged_types = BTreeMap::new();
@@ -140,7 +134,7 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         logged_types.insert(log_id, type_id);
     }
 
-    println!("> Type Map");
+    println!(">> TYPE_MAP");
     println!("{:#?}", types);
 
     let abi = ABI {
@@ -203,7 +197,7 @@ impl SchemaConstructor {
         // move 'id' column to the front
         columns.rotate_right(1);
 
-        let table_name = sql::ObjectName(vec![sql::Ident::new(struct_name)]);
+        let table_name = sql::ObjectName(vec![sql::Ident::new(format!("\"{struct_name}\""))]);
         let builder = sql::CreateTableBuilder::new(table_name)
             .if_not_exists(true)
             .columns(columns);
@@ -215,7 +209,9 @@ impl SchemaConstructor {
         match param_type {
             ParamType::U64 => Self::one_column(name, sql::DataType::BigInt(None)),
             ParamType::U32 => Self::one_column(name, sql::DataType::Integer(None)),
-            ParamType::Struct { .. } => Self::one_column(name, sql::DataType::BigInt(None)),
+            ParamType::Struct { .. } => {
+                Self::one_column(&format!("{name}Id"), sql::DataType::BigInt(None))
+            }
             ParamType::Tuple(elems) => {
                 let mut columns = vec![];
                 for (i, elem) in elems.iter().enumerate() {
@@ -230,7 +226,7 @@ impl SchemaConstructor {
     }
 
     fn one_column(name: &str, data_type: sql::DataType) -> Vec<sql::ColumnDef> {
-        vec![Self::column(name, data_type)]
+        vec![Self::column(&format!("\"{}\"", name), data_type)]
     }
 
     fn column(name: &str, data_type: sql::DataType) -> sql::ColumnDef {
