@@ -15,7 +15,12 @@ fn main() -> MyStruct {
 
     log((value_2, value_1));
 
-    let complex = MyComplexStruct { one: value_1, two: value_2, three: 123 };
+    let complex = MyComplexStruct {
+        one: value_1,
+        two: value_2,
+        three: 123,
+        four: 0x0000000000060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20
+    };
     log(complex);
 
     value_1

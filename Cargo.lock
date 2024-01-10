@@ -1444,6 +1444,7 @@ dependencies = [
  "fuel-vm 0.43.2",
  "fuels",
  "futures",
+ "hex",
  "lazy_static",
  "psl",
  "serde_json",

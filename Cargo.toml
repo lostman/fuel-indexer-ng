@@ -20,3 +20,4 @@ sqlparser = "0.41.0"
 futures = "0.3.30"
 datamodel-renderer = { path = "../prisma-engines/schema-engine/datamodel-renderer" }
 psl = { path = "../prisma-engines/psl/psl" }
+hex = "0.4.3"

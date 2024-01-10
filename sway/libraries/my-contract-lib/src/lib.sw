@@ -15,6 +15,7 @@ pub struct MyComplexStruct {
     one: MyStruct,
     two: MyOtherStruct,
     three: u64,
+    four: b256,
 }
 
 impl TypeName for MyStruct {

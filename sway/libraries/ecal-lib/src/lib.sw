@@ -86,14 +86,15 @@ pub fn save<T>(t: T) where T: TypeName {
     };
 }
 
-pub fn load<T>(_filter: Filter<T>) -> Option<T> where T: TypeName {
+// TODO: return Option<T>
+pub fn load<T>(_filter: Filter<T>) -> T where T: TypeName {
     let type_name = T::type_name();
     let type_id = type_id(type_name);
 
     // r_a=4: load ecal
     asm(r_a: 4u64, r_b: type_id, r_c: 0u64, r_d: 0u64) {
         ecal r_a r_b r_c r_d;
-        r_b: Option<T>
+        r_b: T
     }
 }
 

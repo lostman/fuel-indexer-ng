@@ -26,6 +26,7 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
                 match field_decl.type_field.as_str() {
                     "u32" => model.push_field(Field::new(name, "Int")),
                     "u64" => model.push_field(Field::new(name, "Int")),
+                    "b256" => model.push_field(Field::new(name, "String")),
                     struct_field if struct_field.starts_with("struct ") => {
                         // field_name StructType @relation(fields: ["struct_nameId"], references: ["id"])
                         let struct_type = struct_field.strip_prefix("struct ").unwrap().to_owned();

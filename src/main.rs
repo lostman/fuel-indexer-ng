@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::{fs::File, io::Read};
 
 use fuel_tx::{ConsensusParameters, Finalizable, Receipt, Script, TransactionBuilder};
@@ -53,7 +53,7 @@ fn run_produce_data() -> (ABI, Vec<Receipt>) {
     (abi, receipts)
 }
 
-fn run_indexer_script(script_name: &str, data: Vec<u8>) {
+async fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     let abi_path = format!("sway/scripts/{script_name}/out/debug/{script_name}-abi.json");
     let abi = crate::abi::parse_abi(&abi_path).unwrap();
 
@@ -62,8 +62,11 @@ fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     println!(">> DATABASE SCHEMA");
     let mut db_schema = crate::abi::SchemaConstructor::new();
     db_schema.process_program_abi(&abi);
+    let db = crate::ecal::DB.lock().unwrap().as_ref().unwrap().to_owned();
     for stmt in db_schema.statements() {
         println!("{};", stmt);
+        let result = sqlx::query(&format!("{stmt};")).execute(&db).await.unwrap();
+        println!("{result:#?}");
     }
 
     crate::abi::set_ecal_abi(abi);
@@ -99,7 +102,7 @@ async fn main() {
 
                 if let Some(script_name) = indexers.get(type_name) {
                     println!(">> Running '{script_name}' indexer script for type {type_name}");
-                    run_indexer_script(&script_name, data);
+                    run_indexer_script(&script_name, data).await;
                 } else {
                     println!(">> No indexer script for type {type_name}");
                 }

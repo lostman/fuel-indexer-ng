@@ -125,7 +125,8 @@ impl MyEcal {
         println!("LOAD_QUERY_STRING:\n{query_string}");
 
         let query = sqlx::query(&query_string);
-        // let rt = tokio::runtime::Handle::current();
+
+        // TODO: handle empty result
         let row: sqlx::postgres::PgRow =
             futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap()))
                 .unwrap();
@@ -133,9 +134,19 @@ impl MyEcal {
         let mut tokens = VecDeque::new();
         for (index, t) in types.iter().enumerate() {
             let tok = match t {
-                ParamType::U64 => Token::U64(row.get::<i64, usize>(index) as u64),
+                ParamType::U8 => Token::U8(row.get::<i8, usize>(index) as u8),
+                ParamType::U16 => Token::U16(row.get::<i16, usize>(index) as u16),
                 ParamType::U32 => Token::U32(row.get::<i32, usize>(index) as u32),
-                _ => unimplemented!(),
+                ParamType::U64 => Token::U64(row.get::<i64, usize>(index) as u64),
+                ParamType::B256 => Token::B256(
+                    hex::decode(row.get::<String, usize>(index))
+                        .expect("decode hex to bytes")
+                        .try_into()
+                        .expect("convert bytes to [u8;32]"),
+                ),
+
+                // ParamType::U256
+                _ => unimplemented!("{t:#?}"),
             };
             tokens.push_back(tok);
         }
@@ -161,6 +172,12 @@ impl MyEcal {
                 let field_token = match params.pop_front().unwrap() {
                     ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
                     ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
+                    ParamType::B256 => Token::B256(
+                        hex::decode(row.get::<String, usize>(*index))
+                            .expect("decode hex to bytes")
+                            .try_into()
+                            .expect("convert bytes to [u8;32]"),
+                    ),
                     _ => unimplemented!(),
                 };
                 *index += 1;
@@ -400,7 +417,8 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
                 }
                 "(\n".to_string() + &result.join(",\n") + "\n" + &" ".repeat(indent - 4) + ")"
             }
-            _ => unimplemented!(),
+            Token::B256(bytes) => hex::encode(bytes),
+            _ => unimplemented!("pretty_print {tok:#?}"),
         }
     }
     let decl = crate::abi::type_declaration(type_id);
@@ -523,6 +541,7 @@ fn tok_to_string(tok: &Token) -> String {
     match tok {
         Token::U32(x) => format!("{x}"),
         Token::U64(x) => format!("{x}"),
+        Token::B256(bytes) => format!("\'{}\'", hex::encode(bytes)),
         _ => unimplemented!("{tok:?}"),
     }
 }

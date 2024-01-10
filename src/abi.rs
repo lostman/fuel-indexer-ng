@@ -207,8 +207,21 @@ impl SchemaConstructor {
 
     fn process_param_type(name: &str, param_type: ParamType) -> Vec<sql::ColumnDef> {
         match param_type {
+            ParamType::Bool => Self::one_column(name, sql::DataType::Boolean),
+            // TODO: add constraints
+            // CREATE TABLE my_table (
+            //     id INTEGER,
+            //     -- other columns
+            //     CONSTRAINT positive_id CHECK (id >= 0)
+            // );
+            ParamType::U8 | ParamType::U16 | ParamType::U32 => {
+                Self::one_column(name, sql::DataType::Integer(None))
+            }
             ParamType::U64 => Self::one_column(name, sql::DataType::BigInt(None)),
-            ParamType::U32 => Self::one_column(name, sql::DataType::Integer(None)),
+            // hex-encoded
+            ParamType::U128 => Self::one_column(name, sql::DataType::Text),
+            // hex-encoded
+            ParamType::B256 => Self::one_column(name, sql::DataType::Text),
             ParamType::Struct { .. } => {
                 Self::one_column(&format!("{name}Id"), sql::DataType::BigInt(None))
             }
@@ -221,7 +234,9 @@ impl SchemaConstructor {
                 }
                 columns.into_iter().flatten().collect()
             }
-            _ => unimplemented!("TODO: {} {:?}", name, param_type),
+            ParamType::String => Self::one_column(name, sql::DataType::String(None)),
+            ParamType::Bytes => Self::one_column(name, sql::DataType::Bytea),
+            _ => unimplemented!("TODO: `{}: {:?}`", name, param_type),
         }
     }
 
