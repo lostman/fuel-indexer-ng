@@ -41,6 +41,7 @@ impl EcalHandler for MyEcal {
         rd: RegId,
     ) -> SimpleResult<()> {
         let a = vm.registers()[ra];
+        println!("CALLING ECAL {a}");
         match a {
             0 => Self::read_file_ecal(vm, ra, rb, rc, rd),
             1 => Self::println_str_ecal(vm, ra, rb, rc, rd),
@@ -83,7 +84,7 @@ impl MyEcal {
         let tokens = ABIDecoder::new(DecoderConfig::default())
             .decode(&param_type, data.as_ref())
             .unwrap();
-        // println!("> save = {tokens:?}");
+        println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
         let mut stmts = save_any(type_id, tokens);
         let last = stmts.pop().unwrap();
         let stmts = stmts.join(", ");
@@ -131,6 +132,8 @@ impl MyEcal {
             futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap()))
                 .unwrap();
 
+        println!("RESULT ROW IS_EMPTY={}", row.is_empty());
+
         let mut tokens = VecDeque::new();
         for (index, t) in types.iter().enumerate() {
             let tok = match t {
@@ -145,7 +148,14 @@ impl MyEcal {
                         .expect("convert bytes to [u8;32]"),
                 ),
 
-                // ParamType::U256
+                ParamType::Bool => Token::Bool(row.get::<bool, usize>(index)),
+                ParamType::U256 => {
+                    let x: Vec<u8> = hex::decode(row.get::<String, usize>(index))
+                        .expect("decode hex to bytes")
+                        .into();
+                    let y: [u8;32] = x.try_into().unwrap();
+                    Token::U256(y.into())
+                }
                 _ => unimplemented!("{t:#?}"),
             };
             tokens.push_back(tok);
@@ -160,7 +170,7 @@ impl MyEcal {
             params: &mut VecDeque<ParamType>,
         ) -> Token {
             // println!("CONVERT: {index} {decl:#?} {params:#?}");
-            if is_struct(&decl) {
+            if is_struct(&decl) && !is_u256(&decl) {
                 let mut struct_tokens = vec![];
                 for field in decl.components.unwrap().iter() {
                     let field_decl = crate::abi::type_declaration(field.type_id);
@@ -170,14 +180,21 @@ impl MyEcal {
                 Token::Struct(struct_tokens)
             } else {
                 let field_token = match params.pop_front().unwrap() {
-                    ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
                     ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
+                    ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
                     ParamType::B256 => Token::B256(
                         hex::decode(row.get::<String, usize>(*index))
                             .expect("decode hex to bytes")
                             .try_into()
                             .expect("convert bytes to [u8;32]"),
                     ),
+                    ParamType::U256 => {
+                        let x = row.get::<String, usize>(*index);
+                        let y = hex::decode(&x).expect("decode hex to bytes");
+                        let z = TryInto::<[u8; 32]>::try_into(y).unwrap();
+                        Token::U256(z.into())
+                    }
+                    ParamType::Bool => Token::Bool(row.get::<bool, usize>(*index)),
                     _ => unimplemented!(),
                 };
                 *index += 1;
@@ -186,10 +203,6 @@ impl MyEcal {
         }
 
         let struct_token = convert(&mut 0, &row, decl, &mut types.into());
-        // println!("XX: {struct_token:#?}");
-        // println!("{}", pretty_print(type_id as usize, struct_token.clone()));
-        // println!("XX_DONE");
-
         let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
 
         vm.allocate(output_bytes.len() as u64)?;
@@ -332,7 +345,7 @@ impl MyEcal {
             .unwrap();
         // println!("> print_any = {tokens:?}");
         let result = pretty_print(type_id, tokens);
-        println!("> print_any:");
+        println!("> PRINT_ANY:");
         println!("{result}");
 
         Ok(())
@@ -418,6 +431,8 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
                 "(\n".to_string() + &result.join(",\n") + "\n" + &" ".repeat(indent - 4) + ")"
             }
             Token::B256(bytes) => hex::encode(bytes),
+            Token::U256(value) => hex::encode(Into::<[u8; 32]>::into(value)),
+            Token::Bool(b) => format!("{b}"),
             _ => unimplemented!("pretty_print {tok:#?}"),
         }
     }
@@ -451,7 +466,7 @@ fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
 
     for field in decl.components.as_ref().unwrap().iter() {
         let field_decl = crate::abi::type_declaration(field.type_id);
-        if is_struct(&field_decl) {
+        if is_struct(&field_decl) && !is_u256(&field_decl) {
             let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
             joins.push(format!(
                     "LEFT JOIN \"{field_struct_name}\" ON \"{struct_name}\".\"{field_name}Id\" = \"{field_struct_name}\".id",
@@ -469,9 +484,6 @@ fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
         }
     }
 
-    // println!("> LOAD_ANY:");
-    // println!("{:#?}", struct_queries);
-    // println!("{:#?}", selects);
     (selects, joins, types)
 }
 
@@ -481,13 +493,13 @@ fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
 //   (SELECT id_a.id as id_a, id_b.id as id_b, "Some Other Value" FROM id_a, id_b);
 
 fn save_any(type_id: usize, tok: Token) -> Vec<String> {
+    let decl = crate::abi::type_declaration(type_id);
+    println!(">> SAVE_ANY {type_id} {tok:#?}");
     let toks = if let Token::Struct(toks) = tok {
         toks
     } else {
         panic!("Expected Token::Struct argument but got {tok:#?}");
     };
-    // TODO: do not need a stack here. `save_any` is recursive
-    let decl = crate::abi::type_declaration(type_id);
     let mut stmts = vec![];
     let struct_name = decl.type_field.strip_prefix("struct ").unwrap();
     let columns: Vec<String> = decl
@@ -496,7 +508,8 @@ fn save_any(type_id: usize, tok: Token) -> Vec<String> {
         .unwrap()
         .iter()
         .map(|field| {
-            if is_struct(&crate::abi::type_declaration(field.type_id)) {
+            let decl = &crate::abi::type_declaration(field.type_id);
+            if is_struct(&decl) && !is_u256(&decl) {
                 format!("\"{}Id\"", field.name)
             } else {
                 format!("\"{}\"", field.name)
@@ -509,7 +522,9 @@ fn save_any(type_id: usize, tok: Token) -> Vec<String> {
         let mut sources: Vec<String> = vec![];
         for (i, field) in decl.components.as_ref().unwrap().iter().enumerate() {
             let field_decl = crate::abi::type_declaration(field.type_id);
-            if is_struct(&field_decl) {
+            if is_u256(&field_decl) {
+                selects.push(tok_to_string(&toks[i]));
+            } else if is_struct(&field_decl) {
                 let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
                 let nested_stmts = save_any(field_decl.type_id, toks[i].clone());
                 stmts.push(nested_stmts);
@@ -541,7 +556,12 @@ fn tok_to_string(tok: &Token) -> String {
     match tok {
         Token::U32(x) => format!("{x}"),
         Token::U64(x) => format!("{x}"),
+        Token::Bool(b) => format!("{b}"),
         Token::B256(bytes) => format!("\'{}\'", hex::encode(bytes)),
+        Token::U256(value) => {
+            let x = Into::<[u8; 32]>::into(*value);
+            format!("\'{}\'", hex::encode(x))
+        }
         _ => unimplemented!("{tok:?}"),
     }
 }
@@ -557,6 +577,10 @@ fn decl_fields(decl: &TypeDeclaration) -> Vec<TypeDeclaration> {
 
 fn is_struct(decl: &TypeDeclaration) -> bool {
     decl.type_field.starts_with("struct")
+}
+
+fn is_u256(x: &TypeDeclaration) -> bool {
+    x.type_field.starts_with("struct U256")
 }
 
 fn has_nested_struct(decl: &TypeDeclaration) -> bool {

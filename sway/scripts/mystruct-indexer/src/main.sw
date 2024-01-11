@@ -17,6 +17,8 @@ fn main(mystruct: MyStruct) {
         two: myotherstruct,
         three: 99,
         four: 0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20,
+        five: false,
+        six: std::u256::U256::from((1, 2, 3, 4)),
     };
 
     // Generic pretty-print ECAL
@@ -38,6 +40,7 @@ fn main(mystruct: MyStruct) {
     
     println_str("MyStruct Indexer END");
 }
+
 
 
 

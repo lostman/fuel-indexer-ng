@@ -35,6 +35,19 @@ pub struct ABI {
     pub logged_types: BTreeMap<usize, usize>,
 }
 
+pub fn print_abi(abi: &ABI) {
+    println!(">> PARAM_TYPES");
+    println!("{:#?}", abi.param_types);
+
+
+    println!(">> TYPE_ID_MAP");
+    println!("{:#?}", abi.type_ids);
+
+
+    println!(">> TYPE_MAP");
+    println!("{:#?}", abi.types);
+}
+
 pub fn param_type(type_id: usize) -> ParamType {
     crate::abi::ABI_REF
         .lock()
@@ -107,9 +120,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         types.insert(type_id, decl.clone());
     }
 
-    println!(">> PARAM_TYPES");
-    println!("{:#?}", param_types);
-
     // 3. map(type name => type id)
     let mut type_ids = BTreeMap::new();
     for lt in json.get("types").unwrap().as_array().unwrap() {
@@ -117,9 +127,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         let type_id = lt.get("typeId").unwrap().as_u64().unwrap() as usize;
         type_ids.insert(type_name.to_string(), type_id);
     }
-
-    println!(">> TYPE_ID_MAP");
-    println!("{:#?}", type_ids);
 
     let mut logged_types = BTreeMap::new();
     for lt in json.get("loggedTypes").unwrap().as_array().unwrap() {
@@ -134,8 +141,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         logged_types.insert(log_id, type_id);
     }
 
-    println!(">> TYPE_MAP");
-    println!("{:#?}", types);
 
     let abi = ABI {
         types,
@@ -183,6 +188,9 @@ impl SchemaConstructor {
         struct_name: &str,
         struct_fields: &Vec<TypeApplication>,
     ) {
+        if struct_name == "U256" {
+            return;
+        }
         let type_lookup = HashMap::from_iter(abi.types.clone());
         let mut columns: Vec<sql::ColumnDef> = struct_fields
             .iter()
@@ -222,6 +230,7 @@ impl SchemaConstructor {
             ParamType::U128 => Self::one_column(name, sql::DataType::Text),
             // hex-encoded
             ParamType::B256 => Self::one_column(name, sql::DataType::Text),
+            ParamType::U256 => Self::one_column(name, sql::DataType::Text),
             ParamType::Struct { .. } => {
                 Self::one_column(&format!("{name}Id"), sql::DataType::BigInt(None))
             }

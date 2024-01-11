@@ -1,0 +1,33 @@
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://postgres:postgres@localhost"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model MyComplexStruct {
+  id    Int           @id
+  one   MyStruct      @relation(fields: [oneId], references: [id])
+  oneId Int
+  two   MyOtherStruct @relation(fields: [twoId], references: [id])
+  twoId Int
+  three Int
+  four  String
+  five  Boolean
+  six   String
+}
+
+model MyOtherStruct {
+  id              Int               @id
+  value           Int
+  MyComplexStruct MyComplexStruct[]
+}
+
+model MyStruct {
+  id              Int               @id
+  one             Int
+  two             Int
+  MyComplexStruct MyComplexStruct[]
+}

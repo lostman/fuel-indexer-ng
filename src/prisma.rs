@@ -16,6 +16,9 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
     } in types.values()
     {
         if let Some(name) = type_field.strip_prefix("struct ") {
+            if name == "U256" {
+                continue;
+            }
             println!(">> PROCESSING STRUCT: {name}");
             let mut model = Model::new(name.to_string());
             let mut id_field = Field::new("id", "Int");
@@ -27,6 +30,7 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
                     "u32" => model.push_field(Field::new(name, "Int")),
                     "u64" => model.push_field(Field::new(name, "Int")),
                     "b256" => model.push_field(Field::new(name, "String")),
+                    "struct U256" => model.push_field(Field::new(name, "String")),
                     struct_field if struct_field.starts_with("struct ") => {
                         // field_name StructType @relation(fields: ["struct_nameId"], references: ["id"])
                         let struct_type = struct_field.strip_prefix("struct ").unwrap().to_owned();
@@ -43,6 +47,7 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
                         let field = Field::new(format!("{name}Id"), "Int");
                         model.push_field(field);
                     }
+                    "bool" => model.push_field(Field::new(name, "Boolean")),
                     _ => unimplemented!(),
                 }
             }
@@ -54,7 +59,17 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
         }
     }
 
-    let rendered = psl::reformat(&format!("{data_model}"), 2).unwrap();
+    let header = r#"
+datasource db {
+    provider = "postgresql"
+    url      = "postgresql://postgres:postgres@localhost"
+}
+
+generator client {
+    provider = "prisma-client-js"
+}"#;
+
+    let rendered = psl::reformat(&format!("{header}\n{data_model}"), 2).unwrap();
     println!(">> RENDERED\n{rendered}");
     rendered
 }

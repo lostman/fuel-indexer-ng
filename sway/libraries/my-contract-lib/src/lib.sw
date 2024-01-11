@@ -16,6 +16,8 @@ pub struct MyComplexStruct {
     two: MyOtherStruct,
     three: u64,
     four: b256,
+    five: bool,
+    six: std::u256::U256,
 }
 
 impl TypeName for MyStruct {

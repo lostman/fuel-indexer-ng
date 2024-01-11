@@ -12,7 +12,7 @@ mod abi;
 mod ecal;
 mod prisma;
 
-use crate::abi::ABI;
+use crate::abi::{ABI, print_abi};
 use crate::ecal::MyEcal;
 
 fn run_script(script_path: &str, script_data: Vec<u8>) -> Vec<Receipt> {
@@ -57,7 +57,10 @@ async fn run_indexer_script(script_name: &str, data: Vec<u8>) {
     let abi_path = format!("sway/scripts/{script_name}/out/debug/{script_name}-abi.json");
     let abi = crate::abi::parse_abi(&abi_path).unwrap();
 
-    crate::prisma::schema_from_abi(&abi.types);
+    print_abi(&abi);
+
+    let prisma_schema = crate::prisma::schema_from_abi(&abi.types);
+    std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
     let mut db_schema = crate::abi::SchemaConstructor::new();
