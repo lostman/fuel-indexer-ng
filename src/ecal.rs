@@ -153,7 +153,7 @@ impl MyEcal {
                     let x: Vec<u8> = hex::decode(row.get::<String, usize>(index))
                         .expect("decode hex to bytes")
                         .into();
-                    let y: [u8;32] = x.try_into().unwrap();
+                    let y: [u8; 32] = x.try_into().unwrap();
                     Token::U256(y.into())
                 }
                 _ => unimplemented!("{t:#?}"),
@@ -516,37 +516,54 @@ fn save_any(type_id: usize, tok: Token) -> Vec<String> {
             }
         })
         .collect();
-    let columns = columns.join(", ");
+    // let columns = columns.join(", ");
     if has_nested_struct(&decl) {
         let mut selects: Vec<String> = vec![];
         let mut sources: Vec<String> = vec![];
+        let mut wheres = vec![];
         for (i, field) in decl.components.as_ref().unwrap().iter().enumerate() {
             let field_decl = crate::abi::type_declaration(field.type_id);
+            let field_name = if is_struct(&field_decl) {
+                format!("{}Id", field.name)
+            } else {
+                field.name.clone()
+            };
             if is_u256(&field_decl) {
                 selects.push(tok_to_string(&toks[i]));
             } else if is_struct(&field_decl) {
                 let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
                 let nested_stmts = save_any(field_decl.type_id, toks[i].clone());
                 stmts.push(nested_stmts);
-                let field_name = if is_struct(&field_decl) {
-                    format!("{}Id", field.name)
-                } else {
-                    field.name.clone()
-                };
+
                 selects.push(format!("{field_struct_name}_id.id AS {field_name}"));
-                sources.push(format!("{field_struct_name}_id"))
+                sources.push(format!("{field_struct_name}_id"));
+
+                
+                wheres.push(format!("\"{field_name}\" = {field_struct_name}_id.id"));
             } else {
-                selects.push(tok_to_string(&toks[i]))
+                let tok = toks[i].clone();
+                selects.push(tok_to_string(&tok));
+                wheres.push(format!("\"{field_name}\" = {}", tok_to_string(&tok)));
             }
         }
         let selects = selects.join(", ");
         let sources = sources.join(", ");
-        let stmt = format!("INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources}) RETURNING id");
+        let wheres = wheres.join(" AND ");
+        let stmt = format!("INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id", columns = columns.join(", "));
         stmts.push(vec![stmt]);
     } else {
         let values: Vec<String> = toks.iter().map(tok_to_string).collect();
-        let values = values.join(", ");
-        let stmt = format!("{struct_name}_id AS (INSERT INTO \"{struct_name}\" ({columns}) VALUES ({values}) RETURNING id)");
+        let mut where_clause = vec![];
+        for (i, v) in values.iter().enumerate() {
+            where_clause.push(format!("{c} = {v}", c = columns[i]));
+        }
+        let where_clause = where_clause.join(" AND ");
+
+        let stmt = format!("{struct_name}_new_row AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
+        stmts.push(vec![stmt]);
+
+
+        let stmt = format!("{struct_name}_id AS (SELECT id from {struct_name}_new_row UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
         stmts.push(vec![stmt]);
     }
     stmts.into_iter().flatten().collect()

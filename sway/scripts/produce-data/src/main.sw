@@ -19,7 +19,9 @@ fn main() -> MyStruct {
         one: value_1,
         two: value_2,
         three: 123,
-        four: 0x0000000000060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20
+        four: 0x0000000000060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20,
+        five: true,
+        six: std::u256::U256::from((1, 2, 3, 4)),
     };
     log(complex);
 

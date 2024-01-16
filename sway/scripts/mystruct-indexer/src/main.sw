@@ -6,10 +6,8 @@ use my_contract_lib::*;
 use ecal_lib::{println, println_str, println_u64, print_any, read_file_raw, TypeName};
 
 fn main(mystruct: MyStruct) {
-    println_str("MyStruct Indexer START");
-
     let myotherstruct = MyOtherStruct {
-        value: 33
+        value: 34
     };
 
     let mycomplexstruct = MyComplexStruct {
@@ -17,7 +15,7 @@ fn main(mystruct: MyStruct) {
         two: myotherstruct,
         three: 99,
         four: 0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20,
-        five: false,
+        five: true,
         six: std::u256::U256::from((1, 2, 3, 4)),
     };
 
@@ -37,8 +35,6 @@ fn main(mystruct: MyStruct) {
     println_str("Loaded value:");
     print_any(x);
     println_str("...done");
-    
-    println_str("MyStruct Indexer END");
 }
 
 
