@@ -56,6 +56,11 @@
           "typeArguments": null
         },
         {
+          "name": "one_one",
+          "type": 6,
+          "typeArguments": null
+        },
+        {
           "name": "two",
           "type": 5,
           "typeArguments": null

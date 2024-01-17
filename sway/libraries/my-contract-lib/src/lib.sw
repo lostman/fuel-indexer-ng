@@ -13,6 +13,7 @@ pub struct MyOtherStruct {
 
 pub struct MyComplexStruct {
     one: MyStruct,
+    one_one: MyStruct,
     two: MyOtherStruct,
     three: u64,
     four: b256,

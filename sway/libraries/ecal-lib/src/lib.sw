@@ -109,6 +109,12 @@ pub struct Filter<T> {
     phantom: PhantomData<T>,
 }
 
+impl<T> Filter<T> {
+    pub fn any() -> Filter<T> {
+        Filter { phantom: PhantomData::<T>{} }
+    }
+}
+
 impl<T, F> Field<T, F> {
     pub fn eq(self, _val: F) -> Filter<T> {
         Filter { phantom: PhantomData::<T>{} }

@@ -249,6 +249,34 @@ impl SchemaConstructor {
         }
     }
 
+    // pub enum ParamType {
+    // x   U8,   x
+    // x   U16,  x
+    // x   U32,  x
+    // x   U64,  x
+    // x   U128, x
+    // x   U256, x
+    // x   Bool, x
+    // x   B256, x
+    //     Unit,
+    //     Array(Box<ParamType>, usize),
+    //     Vector(Box<ParamType>),
+    //     StringSlice,
+    //     StringArray(usize),
+    //     Struct {
+    //         fields: Vec<ParamType>,
+    //         generics: Vec<ParamType>,
+    //     },
+    //     Enum {
+    //         variants: EnumVariants,
+    //         generics: Vec<ParamType>,
+    //     },
+    //     Tuple(Vec<ParamType>),
+    //     RawSlice,
+    // x   Bytes,
+    // x   String,
+    // }
+
     fn one_column(name: &str, data_type: sql::DataType) -> Vec<sql::ColumnDef> {
         vec![Self::column(&format!("\"{}\"", name), data_type)]
     }

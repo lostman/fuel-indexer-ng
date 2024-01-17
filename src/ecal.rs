@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::{
     fs::File,
@@ -85,7 +86,7 @@ impl MyEcal {
             .decode(&param_type, data.as_ref())
             .unwrap();
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
-        let mut stmts = save_any(type_id, tokens);
+        let (_, mut stmts) = save_any(HashSet::new(), type_id, tokens);
         let last = stmts.pop().unwrap();
         let stmts = stmts.join(", ");
         let stmt = format!("WITH {stmts} {last}");
@@ -115,13 +116,15 @@ impl MyEcal {
             .strip_prefix("struct ")
             .unwrap()
             .to_string();
-        let (selects, joins, types) = load_any(type_id as usize);
+        let (selects, joins, types) = load_any(HashSet::new(), HashMap::new(), type_id as usize);
         let selects = selects.join(", ");
         let joins = joins.join(" ");
 
         let types: Vec<ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
         // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
-        let query_string = format!("SELECT {selects} FROM \"{struct_name}\" {joins} LIMIT 1");
+        let query_string = format!(
+            "SELECT {selects} FROM \"{struct_name}\" AS \"{struct_name}_0\" {joins} LIMIT 1"
+        );
 
         println!("LOAD_QUERY_STRING:\n{query_string}");
 
@@ -446,7 +449,12 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
 
 use std::collections::{BTreeMap, VecDeque};
 
-fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
+fn load_any(
+    mut unique_joins: HashSet<String>,
+    mut context: HashMap<String, usize>,
+    type_id: usize,
+) -> (Vec<String>, Vec<String>, Vec<usize>) {
+    println!("load_any unique_joins={unique_joins:#?}");
     let decl = crate::abi::type_declaration(type_id);
 
     let mut struct_columns: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -467,19 +475,31 @@ fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
     for field in decl.components.as_ref().unwrap().iter() {
         let field_decl = crate::abi::type_declaration(field.type_id);
         if is_struct(&field_decl) && !is_u256(&field_decl) {
+            println!("FOO");
             let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
-            joins.push(format!(
-                    "LEFT JOIN \"{field_struct_name}\" ON \"{struct_name}\".\"{field_name}Id\" = \"{field_struct_name}\".id",
-                    field_name = field.name
-                ));
-            let (nested_selects, nested_joins, nested_types) = load_any(field.type_id);
-            // println!("NESTED:\n{nested_selects:#?}\n{nested_joins:#?}");
+            let i = context.entry(field_struct_name.to_string()).and_modify(|x| *x += 1).or_insert(0);
+
+            let field_struct_alias = format!("{field_struct_name}_{i}");
+            println!("load_any field_struct_alias={field_struct_alias}");
+            let j = context.entry(struct_name.to_string()).or_insert(0);
+            if unique_joins.insert(field_struct_alias.clone()) {
+                let stmt = format!("LEFT JOIN \"{field_struct_name}\" AS \"{field_struct_alias}\" ON \"{struct_name}_{j}\".\"{field_name}Id\" = \"{field_struct_alias}\".id", field_name = field.name);
+                joins.push(stmt);
+            }
+
+            let (nested_selects, nested_joins, nested_types) =
+                load_any(unique_joins.clone(), context.clone(), field.type_id);
+            println!("NESTED:\n{nested_selects:#?}\n{nested_joins:#?}");
 
             selects.extend(nested_selects);
             joins.extend(nested_joins);
             types.extend(nested_types);
         } else {
-            selects.push(format!("\"{struct_name}\".\"{}\"", field.name));
+            println!("BAR");
+            let i = context.get(&struct_name).unwrap_or(&0);
+            let stmt = format!("\"{struct_name}_{i}\".\"{field_name}\"", field_name = field.name);
+            println!("load_any select={stmt}");
+            selects.push(stmt);
             types.push(field.type_id);
         }
     }
@@ -492,7 +512,43 @@ fn load_any(type_id: usize) -> (Vec<String>, Vec<String>, Vec<usize>) {
 //   id_b AS (insert INTO table_b (two) VALUES (123) RETURNING id)
 //   (SELECT id_a.id as id_a, id_b.id as id_b, "Some Other Value" FROM id_a, id_b);
 
-fn save_any(type_id: usize, tok: Token) -> Vec<String> {
+// WITH new_row AS (INSERT INTO "MyStruct" (one, two)
+// SELECT 2, 3 FROM "MyStruct" WHERE NOT EXISTS
+// (SELECT 1 FROM "MyStruct" WHERE one = 2 AND two = 3) RETURNING id) SELECT id FROM new_row UNION ALL SELECT id FROM "MyStruct" WHERE one = 2 AND two = 3 LIMIT 1;
+
+// WITH new_row AS
+// (INSERT INTO "MyStruct" (one, two)
+//   SELECT 2, 3
+//   WHERE NOT EXISTS
+//     (SELECT 1 FROM "MyStruct" WHERE one = 2 AND two = 3)
+// ),
+// new_id AS (SELECT id from new_row UNION ALL SELECT id from "MyStruct" WHERE one = 2 and two = 3 LIMIT 1) SELECT id FROM new_id;
+
+// WITH new_row AS (INSERT INTO "MyStruct" (one, two) SELECT 2, 3 WHERE NOT EXISTS (SELECT 1 FROM "MyStruct" WHERE one = 2 and two = 3) RETURNING *) SELECT * from new_row;
+
+// WITH new_row AS (
+//     INSERT INTO "MyStruct" (one, two)
+//     SELECT 2, 3
+//     WHERE NOT EXISTS (
+//         SELECT 1 FROM "MyStruct"
+//         WHERE one = 2 AND two = 3
+//     )
+//     RETURNING *
+// ), new_id AS (
+//     SELECT id FROM new_row
+//     UNION
+//     SELECT id FROM "MyStruct"
+//     WHERE one = 2 AND two = 3
+// )
+// SELECT * FROM new_id;
+
+use std::collections::HashSet;
+
+fn save_any(
+    mut unique_stmts: HashSet<String>,
+    type_id: usize,
+    tok: Token,
+) -> (HashSet<String>, Vec<String>) {
     let decl = crate::abi::type_declaration(type_id);
     println!(">> SAVE_ANY {type_id} {tok:#?}");
     let toks = if let Token::Struct(toks) = tok {
@@ -532,14 +588,40 @@ fn save_any(type_id: usize, tok: Token) -> Vec<String> {
                 selects.push(tok_to_string(&toks[i]));
             } else if is_struct(&field_decl) {
                 let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
-                let nested_stmts = save_any(field_decl.type_id, toks[i].clone());
+                let (nested_unique, nested_stmts) =
+                    save_any(unique_stmts.clone(), field_decl.type_id, toks[i].clone());
                 stmts.push(nested_stmts);
+                unique_stmts.extend(nested_unique.into_iter());
 
-                selects.push(format!("{field_struct_name}_id.id AS {field_name}"));
-                sources.push(format!("{field_struct_name}_id"));
+                let field_struct_hash = {
+                    let toks = if let Token::Struct(toks) = toks[i].clone() {
+                        toks
+                    } else {
+                        panic!(
+                            "Expected Token::Struct argument but got {tok:#?}",
+                            tok = toks[i].clone()
+                        );
+                    };
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = DefaultHasher::new();
+                    let s: String = format!("{toks:#?}");
+                    s.hash(&mut hasher);
+                    hasher.finish()
+                };
+                selects.push(format!(
+                    "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                ));
 
-                
-                wheres.push(format!("\"{field_name}\" = {field_struct_name}_id.id"));
+                let source = format!("{field_struct_name}_id_{field_struct_hash}");
+
+                if !sources.contains(&source) {
+                    sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
+                }
+
+                wheres.push(format!(
+                    "\"{field_name}\" = {field_struct_name}_id_{field_struct_hash}.id"
+                ));
             } else {
                 let tok = toks[i].clone();
                 selects.push(tok_to_string(&tok));
@@ -559,14 +641,24 @@ fn save_any(type_id: usize, tok: Token) -> Vec<String> {
         }
         let where_clause = where_clause.join(" AND ");
 
-        let stmt = format!("{struct_name}_new_row AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
-        stmts.push(vec![stmt]);
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        let s: String = format!("{toks:#?}");
+        s.hash(&mut hasher);
+        let hash = hasher.finish();
 
+        let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
+        if unique_stmts.insert(stmt.clone()) {
+            stmts.push(vec![stmt]);
+        };
 
-        let stmt = format!("{struct_name}_id AS (SELECT id from {struct_name}_new_row UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
-        stmts.push(vec![stmt]);
+        let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
+        if unique_stmts.insert(stmt.clone()) {
+            stmts.push(vec![stmt]);
+        }
     }
-    stmts.into_iter().flatten().collect()
+    (unique_stmts, stmts.into_iter().flatten().collect())
 }
 
 fn tok_to_string(tok: &Token) -> String {
