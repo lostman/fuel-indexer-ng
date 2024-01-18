@@ -86,8 +86,7 @@ impl MyEcal {
             .decode(&param_type, data.as_ref())
             .unwrap();
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
-        let (_, mut stmts) = save_any(HashSet::new(), type_id, tokens);
-        // let last = stmts.pop().unwrap();
+        let (_, stmts) = save_any(HashSet::new(), type_id, tokens);
         let stmts = stmts.join(", ");
         let stmt = format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)");
         println!(">> SAVE_STMT\n{stmt}");
@@ -554,15 +553,11 @@ use std::collections::HashSet;
 fn save_any(
     mut unique_stmts: HashSet<String>,
     type_id: usize,
-    tok: Token,
+    struct_token: Token,
 ) -> (HashSet<String>, Vec<String>) {
     let decl = crate::abi::type_declaration(type_id);
-    println!(">> SAVE_ANY {type_id} {tok:#?}");
-    let toks = if let Token::Struct(toks) = tok {
-        toks
-    } else {
-        panic!("Expected Token::Struct argument but got {tok:#?}");
-    };
+    println!(">> SAVE_ANY {type_id} {struct_token:#?}");
+    let toks = expect_struct_token(&struct_token);
     let mut stmts = vec![];
     let struct_name = decl.type_field.strip_prefix("struct ").unwrap();
     let columns: Vec<String> = decl
@@ -601,22 +596,7 @@ fn save_any(
                 stmts.push(nested_stmts);
                 unique_stmts.extend(nested_unique.into_iter());
 
-                let field_struct_hash = {
-                    let toks = if let Token::Struct(toks) = toks[i].clone() {
-                        toks
-                    } else {
-                        panic!(
-                            "Expected Token::Struct argument but got {tok:#?}",
-                            tok = toks[i].clone()
-                        );
-                    };
-                    use std::collections::hash_map::DefaultHasher;
-                    use std::hash::{Hash, Hasher};
-                    let mut hasher = DefaultHasher::new();
-                    let s: String = format!("{toks:#?}");
-                    s.hash(&mut hasher);
-                    hasher.finish()
-                };
+                let field_struct_hash = hash_tokens(&expect_struct_token(&toks[i]));
                 selects.push(format!(
                     "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
                 ));
@@ -644,12 +624,7 @@ fn save_any(
         let wheres = wheres.join(" AND ");
         let wheres_2 = wheres_2.join(" AND ");
 
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        let s: String = format!("{toks:#?}");
-        s.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = hash_tokens(&toks);
 
         let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id)", columns = columns.join(", "));
 
@@ -669,12 +644,7 @@ fn save_any(
         }
         let where_clause = where_clause.join(" AND ");
 
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        let s: String = format!("{toks:#?}");
-        s.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = hash_tokens(&toks);
 
         let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
         if unique_stmts.insert(stmt.clone()) {
@@ -700,6 +670,23 @@ fn tok_to_string(tok: &Token) -> String {
             format!("\'{}\'", hex::encode(x))
         }
         _ => unimplemented!("{tok:?}"),
+    }
+}
+
+// TODO: derive Hash for Token instead.
+fn hash_tokens(tokens: &Vec<Token>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let s: String = format!("{tokens:#?}");
+    s.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn expect_struct_token(struct_token: &Token) -> &Vec<Token> {
+    if let Token::Struct(toks) = struct_token {
+        toks
+    } else {
+        panic!("Expected Token::Struct argument but got {struct_token:#?}");
     }
 }
 

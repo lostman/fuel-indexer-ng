@@ -7,10 +7,32 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model MyComplexStruct {
+  id        Int           @id
+  one       MyStruct      @relation(fields: [oneId], references: [id])
+  oneId     Int
+  one_one   MyStruct      @relation(fields: [one_oneId], references: [id])
+  one_oneId Int
+  two       MyOtherStruct @relation(fields: [twoId], references: [id])
+  twoId     Int
+  three     Int
+  four      String
+  five      Boolean
+  six       String
+}
+
+model MyOtherStruct {
+  id              Int               @id
+  value           Int
+  MyComplexStruct MyComplexStruct[]
+}
+
 model MyStruct {
-  id  Int @id
-  one Int
-  two Int
+  id              Int               @id
+  one             Int
+  two             Int
+  MyComplexStruct MyComplexStruct[]
+  MyComplexStruct MyComplexStruct[]
 }
 
 model P {
