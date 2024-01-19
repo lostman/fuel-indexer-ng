@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::{
     fs::File,
@@ -86,9 +86,7 @@ impl MyEcal {
             .decode(&param_type, data.as_ref())
             .unwrap();
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
-        let (_, stmts) = save_any(HashSet::new(), type_id, tokens);
-        let stmts = stmts.join(", ");
-        let stmt = format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)");
+        let stmt = save_any(type_id, tokens);
         println!(">> SAVE_STMT\n{stmt}");
         let rows_affected = futures::executor::block_on(
             sqlx::query(&stmt).execute(DB.lock().unwrap().as_ref().unwrap()),
@@ -513,51 +511,20 @@ fn load_any(
     (selects, joins, types)
 }
 
-// WITH
-//   id_a AS (insert INTO table_a (one) values (434) RETURNING id),
-//   id_b AS (insert INTO table_b (two) VALUES (123) RETURNING id)
-//   (SELECT id_a.id as id_a, id_b.id as id_b, "Some Other Value" FROM id_a, id_b);
+fn save_any(type_id: usize, struct_tokens: Token) -> String {
+    let (_, stmts) = save_any_rec(HashSet::new(), type_id, struct_tokens);
+    let stmts = stmts.join(", ");
+    format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)")
+}
 
-// WITH new_row AS (INSERT INTO "MyStruct" (one, two)
-// SELECT 2, 3 FROM "MyStruct" WHERE NOT EXISTS
-// (SELECT 1 FROM "MyStruct" WHERE one = 2 AND two = 3) RETURNING id) SELECT id FROM new_row UNION ALL SELECT id FROM "MyStruct" WHERE one = 2 AND two = 3 LIMIT 1;
-
-// WITH new_row AS
-// (INSERT INTO "MyStruct" (one, two)
-//   SELECT 2, 3
-//   WHERE NOT EXISTS
-//     (SELECT 1 FROM "MyStruct" WHERE one = 2 AND two = 3)
-// ),
-// new_id AS (SELECT id from new_row UNION ALL SELECT id from "MyStruct" WHERE one = 2 and two = 3 LIMIT 1) SELECT id FROM new_id;
-
-// WITH new_row AS (INSERT INTO "MyStruct" (one, two) SELECT 2, 3 WHERE NOT EXISTS (SELECT 1 FROM "MyStruct" WHERE one = 2 and two = 3) RETURNING *) SELECT * from new_row;
-
-// WITH new_row AS (
-//     INSERT INTO "MyStruct" (one, two)
-//     SELECT 2, 3
-//     WHERE NOT EXISTS (
-//         SELECT 1 FROM "MyStruct"
-//         WHERE one = 2 AND two = 3
-//     )
-//     RETURNING *
-// ), new_id AS (
-//     SELECT id FROM new_row
-//     UNION
-//     SELECT id FROM "MyStruct"
-//     WHERE one = 2 AND two = 3
-// )
-// SELECT * FROM new_id;
-
-use std::collections::HashSet;
-
-fn save_any(
+fn save_any_rec(
     mut unique_stmts: HashSet<String>,
     type_id: usize,
-    struct_token: Token,
+    struct_tokens: Token,
 ) -> (HashSet<String>, Vec<String>) {
     let decl = crate::abi::type_declaration(type_id);
-    println!(">> SAVE_ANY {type_id} {struct_token:#?}");
-    let toks = expect_struct_token(&struct_token);
+    println!(">> SAVE_ANY {type_id} {struct_tokens:#?}");
+    let toks = expect_struct_tokens(&struct_tokens);
     let mut stmts = vec![];
     let struct_name = decl.type_field.strip_prefix("struct ").unwrap();
     let columns: Vec<String> = decl
@@ -574,12 +541,10 @@ fn save_any(
             }
         })
         .collect();
-    // let columns = columns.join(", ");
     if has_nested_struct(&decl) {
         let mut selects: Vec<String> = vec![];
         let mut sources: Vec<String> = vec![];
         let mut wheres = vec![];
-        let mut wheres_2 = vec![];
         for (i, field) in decl.components.as_ref().unwrap().iter().enumerate() {
             let field_decl = crate::abi::type_declaration(field.type_id);
             let field_name = if is_struct(&field_decl) {
@@ -592,11 +557,11 @@ fn save_any(
             } else if is_struct(&field_decl) {
                 let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
                 let (nested_unique, nested_stmts) =
-                    save_any(unique_stmts.clone(), field_decl.type_id, toks[i].clone());
+                    save_any_rec(unique_stmts.clone(), field_decl.type_id, toks[i].clone());
                 stmts.push(nested_stmts);
                 unique_stmts.extend(nested_unique.into_iter());
 
-                let field_struct_hash = hash_tokens(&expect_struct_token(&toks[i]));
+                let field_struct_hash = hash_tokens(&expect_struct_tokens(&toks[i]));
                 selects.push(format!(
                     "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
                 ));
@@ -608,9 +573,6 @@ fn save_any(
                 }
 
                 wheres.push(format!(
-                    "\"{field_name}\" = {field_struct_name}_id_{field_struct_hash}.id"
-                ));
-                wheres_2.push(format!(
                     "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
                 ));
             } else {
@@ -622,17 +584,14 @@ fn save_any(
         let selects = selects.join(", ");
         let sources = sources.join(", ");
         let wheres = wheres.join(" AND ");
-        let wheres_2 = wheres_2.join(" AND ");
-
         let hash = hash_tokens(&toks);
 
         let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id)", columns = columns.join(", "));
-
         if unique_stmts.insert(stmt.clone()) {
             stmts.push(vec![stmt]);
         };
 
-        let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres_2} LIMIT 1)");
+        let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres} LIMIT 1)");
         if unique_stmts.insert(stmt.clone()) {
             stmts.push(vec![stmt]);
         }
@@ -682,7 +641,7 @@ fn hash_tokens(tokens: &Vec<Token>) -> u64 {
     hasher.finish()
 }
 
-fn expect_struct_token(struct_token: &Token) -> &Vec<Token> {
+fn expect_struct_tokens(struct_token: &Token) -> &Vec<Token> {
     if let Token::Struct(toks) = struct_token {
         toks
     } else {
