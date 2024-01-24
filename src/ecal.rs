@@ -113,97 +113,7 @@ impl MyEcal {
             .strip_prefix("struct ")
             .unwrap()
             .to_string();
-        let mut context = HashMap::new();
-        let (selects, joins, types) = load_any(HashSet::new(), &mut context, type_id as usize);
-        let selects = selects.join(", ");
-        let joins = joins.join(" ");
-
-        let types: Vec<ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
-        // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
-        let query_string = format!(
-            "SELECT {selects} FROM \"{struct_name}\" AS \"{struct_name}_0\" {joins} LIMIT 1"
-        );
-
-        println!("LOAD_QUERY_STRING:\n{query_string}");
-
-        let query = sqlx::query(&query_string);
-
-        // TODO: handle empty result
-        let row: sqlx::postgres::PgRow =
-            futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap()))
-                .unwrap();
-
-        println!("RESULT ROW IS_EMPTY={}", row.is_empty());
-
-        let mut tokens = VecDeque::new();
-        for (index, t) in types.iter().enumerate() {
-            let tok = match t {
-                ParamType::U8 => Token::U8(row.get::<i8, usize>(index) as u8),
-                ParamType::U16 => Token::U16(row.get::<i16, usize>(index) as u16),
-                ParamType::U32 => Token::U32(row.get::<i32, usize>(index) as u32),
-                ParamType::U64 => Token::U64(row.get::<i64, usize>(index) as u64),
-                ParamType::B256 => Token::B256(
-                    hex::decode(row.get::<String, usize>(index))
-                        .expect("decode hex to bytes")
-                        .try_into()
-                        .expect("convert bytes to [u8;32]"),
-                ),
-
-                ParamType::Bool => Token::Bool(row.get::<bool, usize>(index)),
-                ParamType::U256 => {
-                    let x: Vec<u8> = hex::decode(row.get::<String, usize>(index))
-                        .expect("decode hex to bytes")
-                        .into();
-                    let y: [u8; 32] = x.try_into().unwrap();
-                    Token::U256(y.into())
-                }
-                _ => unimplemented!("{t:#?}"),
-            };
-            tokens.push_back(tok);
-        }
-
-        let decl = crate::abi::type_declaration(type_id as usize);
-
-        fn convert(
-            index: &mut usize,
-            row: &sqlx::postgres::PgRow,
-            decl: TypeDeclaration,
-            params: &mut VecDeque<ParamType>,
-        ) -> Token {
-            // println!("CONVERT: {index} {decl:#?} {params:#?}");
-            if is_struct(&decl) && !is_u256(&decl) {
-                let mut struct_tokens = vec![];
-                for field in decl.components.unwrap().iter() {
-                    let field_decl = crate::abi::type_declaration(field.type_id);
-                    let field_tokens = convert(index, row, field_decl, params);
-                    struct_tokens.push(field_tokens)
-                }
-                Token::Struct(struct_tokens)
-            } else {
-                let field_token = match params.pop_front().unwrap() {
-                    ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
-                    ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
-                    ParamType::B256 => Token::B256(
-                        hex::decode(row.get::<String, usize>(*index))
-                            .expect("decode hex to bytes")
-                            .try_into()
-                            .expect("convert bytes to [u8;32]"),
-                    ),
-                    ParamType::U256 => {
-                        let x = row.get::<String, usize>(*index);
-                        let y = hex::decode(&x).expect("decode hex to bytes");
-                        let z = TryInto::<[u8; 32]>::try_into(y).unwrap();
-                        Token::U256(z.into())
-                    }
-                    ParamType::Bool => Token::Bool(row.get::<bool, usize>(*index)),
-                    _ => unimplemented!(),
-                };
-                *index += 1;
-                field_token
-            }
-        }
-
-        let struct_token = convert(&mut 0, &row, decl, &mut types.into());
+        let struct_token = load_any(struct_name, type_id as usize);
         let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
 
         vm.allocate(output_bytes.len() as u64)?;
@@ -447,12 +357,104 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
 
 use std::collections::{BTreeMap, VecDeque};
 
-fn load_any(
+fn load_any(struct_name: String, type_id: usize) -> Token {
+    let mut context = HashMap::new();
+    let (selects, joins, types) = load_any_rec(HashSet::new(), &mut context, type_id as usize);
+    let selects = selects.join(", ");
+    let joins = joins.join(" ");
+
+    let types: Vec<ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
+    // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
+    let query_string =
+        format!("SELECT {selects} FROM \"{struct_name}\" AS \"{struct_name}_0\" {joins} LIMIT 1");
+
+    println!("LOAD_QUERY_STRING:\n{query_string}");
+
+    let query = sqlx::query(&query_string);
+
+    // TODO: handle empty result
+    let row: sqlx::postgres::PgRow =
+        futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap())).unwrap();
+
+    println!("RESULT ROW IS_EMPTY={}", row.is_empty());
+
+    let mut tokens = VecDeque::new();
+    for (index, t) in types.iter().enumerate() {
+        let tok = match t {
+            ParamType::U8 => Token::U8(row.get::<i8, usize>(index) as u8),
+            ParamType::U16 => Token::U16(row.get::<i16, usize>(index) as u16),
+            ParamType::U32 => Token::U32(row.get::<i32, usize>(index) as u32),
+            ParamType::U64 => Token::U64(row.get::<i64, usize>(index) as u64),
+            ParamType::B256 => Token::B256(
+                hex::decode(row.get::<String, usize>(index))
+                    .expect("decode hex to bytes")
+                    .try_into()
+                    .expect("convert bytes to [u8;32]"),
+            ),
+
+            ParamType::Bool => Token::Bool(row.get::<bool, usize>(index)),
+            ParamType::U256 => {
+                let x: Vec<u8> = hex::decode(row.get::<String, usize>(index))
+                    .expect("decode hex to bytes")
+                    .into();
+                let y: [u8; 32] = x.try_into().unwrap();
+                Token::U256(y.into())
+            }
+            _ => unimplemented!("{t:#?}"),
+        };
+        tokens.push_back(tok);
+    }
+
+    let decl = crate::abi::type_declaration(type_id as usize);
+
+    fn convert(
+        index: &mut usize,
+        row: &sqlx::postgres::PgRow,
+        decl: TypeDeclaration,
+        params: &mut VecDeque<ParamType>,
+    ) -> Token {
+        // println!("CONVERT: {index} {decl:#?} {params:#?}");
+        if is_struct(&decl) && !is_u256(&decl) {
+            let mut struct_tokens = vec![];
+            for field in decl.components.unwrap().iter() {
+                let field_decl = crate::abi::type_declaration(field.type_id);
+                let field_tokens = convert(index, row, field_decl, params);
+                struct_tokens.push(field_tokens)
+            }
+            Token::Struct(struct_tokens)
+        } else {
+            let field_token = match params.pop_front().unwrap() {
+                ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
+                ParamType::U64 => Token::U64(row.get::<i64, usize>(*index) as u64),
+                ParamType::B256 => Token::B256(
+                    hex::decode(row.get::<String, usize>(*index))
+                        .expect("decode hex to bytes")
+                        .try_into()
+                        .expect("convert bytes to [u8;32]"),
+                ),
+                ParamType::U256 => {
+                    let x = row.get::<String, usize>(*index);
+                    let y = hex::decode(&x).expect("decode hex to bytes");
+                    let z = TryInto::<[u8; 32]>::try_into(y).unwrap();
+                    Token::U256(z.into())
+                }
+                ParamType::Bool => Token::Bool(row.get::<bool, usize>(*index)),
+                _ => unimplemented!(),
+            };
+            *index += 1;
+            field_token
+        }
+    }
+
+    convert(&mut 0, &row, decl, &mut types.into())
+}
+
+fn load_any_rec(
     mut unique_joins: HashSet<String>,
     context: &mut HashMap<String, usize>,
     type_id: usize,
 ) -> (Vec<String>, Vec<String>, Vec<usize>) {
-    println!("load_any unique_joins={unique_joins:#?}");
+    println!("load_any_rec unique_joins={unique_joins:#?}");
     let decl = crate::abi::type_declaration(type_id);
 
     let mut struct_columns: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -489,7 +491,7 @@ fn load_any(
             }
 
             let (nested_selects, nested_joins, nested_types) =
-                load_any(unique_joins.clone(), context, field.type_id);
+                load_any_rec(unique_joins.clone(), context, field.type_id);
             println!("NESTED:\n{nested_selects:#?}\n{nested_joins:#?}");
 
             selects.extend(nested_selects);
@@ -502,7 +504,7 @@ fn load_any(
                 "\"{struct_name}_{i}\".\"{field_name}\"",
                 field_name = field.name
             );
-            println!("load_any select={stmt}");
+            println!("load_any_rec select={stmt}");
             selects.push(stmt);
             types.push(field.type_id);
         }
