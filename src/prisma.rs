@@ -48,7 +48,7 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
                         model.push_field(field);
                     }
                     "bool" => model.push_field(Field::new(name, "Boolean")),
-                    _ => unimplemented!(),
+                    x => unimplemented!("{x}"),
                 }
             }
             println!(

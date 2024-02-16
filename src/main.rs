@@ -2,9 +2,11 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::{fs::File, io::Read};
 
-use fuel_tx::{ConsensusParameters, Finalizable, Receipt, Script, TransactionBuilder};
 use fuel_vm::{
-    prelude::{Interpreter, IntoChecked, MemoryClient},
+    prelude::{
+        ConsensusParameters, Finalizable, Interpreter, IntoChecked, MemoryClient, Receipt, Script,
+        TransactionBuilder,
+    },
     storage::MemoryStorage,
 };
 
@@ -12,7 +14,7 @@ mod abi;
 mod ecal;
 mod prisma;
 
-use crate::abi::{ABI, print_abi};
+use crate::abi::{print_abi, ABI};
 use crate::ecal::MyEcal;
 
 fn run_script(script_path: &str, script_data: Vec<u8>) -> Vec<Receipt> {

@@ -8,64 +8,64 @@
     },
     {
       "typeId": 1,
-      "type": "b256",
-      "components": null,
-      "typeParameters": null
-    },
-    {
-      "typeId": 2,
-      "type": "bool",
-      "components": null,
-      "typeParameters": null
-    },
-    {
-      "typeId": 3,
-      "type": "struct MyComplexStruct",
+      "type": "[_; 10]",
       "components": [
         {
-          "name": "one",
-          "type": 5,
-          "typeArguments": null
-        },
-        {
-          "name": "one_one",
-          "type": 5,
-          "typeArguments": null
-        },
-        {
-          "name": "two",
-          "type": 4,
-          "typeArguments": null
-        },
-        {
-          "name": "three",
-          "type": 11,
-          "typeArguments": null
-        },
-        {
-          "name": "four",
-          "type": 1,
-          "typeArguments": null
-        },
-        {
-          "name": "five",
-          "type": 2,
-          "typeArguments": null
-        },
-        {
-          "name": "six",
-          "type": 9,
+          "name": "__array_element",
+          "type": 13,
           "typeArguments": null
         }
       ],
       "typeParameters": null
     },
     {
+      "typeId": 2,
+      "type": "b256",
+      "components": null,
+      "typeParameters": null
+    },
+    {
+      "typeId": 3,
+      "type": "bool",
+      "components": null,
+      "typeParameters": null
+    },
+    {
       "typeId": 4,
-      "type": "struct MyOtherStruct",
+      "type": "struct MyComplexStruct",
       "components": [
         {
-          "name": "value",
+          "name": "one",
+          "type": 6,
+          "typeArguments": null
+        },
+        {
+          "name": "one_one",
+          "type": 6,
+          "typeArguments": null
+        },
+        {
+          "name": "two",
+          "type": 5,
+          "typeArguments": null
+        },
+        {
+          "name": "three",
+          "type": 13,
+          "typeArguments": null
+        },
+        {
+          "name": "four",
+          "type": 2,
+          "typeArguments": null
+        },
+        {
+          "name": "five",
+          "type": 3,
+          "typeArguments": null
+        },
+        {
+          "name": "six",
           "type": 10,
           "typeArguments": null
         }
@@ -74,16 +74,11 @@
     },
     {
       "typeId": 5,
-      "type": "struct MyStruct",
+      "type": "struct MyOtherStruct",
       "components": [
         {
-          "name": "one",
-          "type": 11,
-          "typeArguments": null
-        },
-        {
-          "name": "two",
-          "type": 11,
+          "name": "value",
+          "type": 12,
           "typeArguments": null
         }
       ],
@@ -91,11 +86,16 @@
     },
     {
       "typeId": 6,
-      "type": "struct P",
+      "type": "struct MyStruct",
       "components": [
         {
-          "name": "p",
-          "type": 10,
+          "name": "one",
+          "type": 13,
+          "typeArguments": null
+        },
+        {
+          "name": "two",
+          "type": 13,
           "typeArguments": null
         }
       ],
@@ -103,16 +103,11 @@
     },
     {
       "typeId": 7,
-      "type": "struct Q",
+      "type": "struct P",
       "components": [
         {
-          "name": "p_1",
-          "type": 6,
-          "typeArguments": null
-        },
-        {
-          "name": "p_2",
-          "type": 6,
+          "name": "p",
+          "type": 12,
           "typeArguments": null
         }
       ],
@@ -120,15 +115,15 @@
     },
     {
       "typeId": 8,
-      "type": "struct R",
+      "type": "struct Q",
       "components": [
         {
-          "name": "q_1",
+          "name": "p_1",
           "type": 7,
           "typeArguments": null
         },
         {
-          "name": "q_2",
+          "name": "p_2",
           "type": 7,
           "typeArguments": null
         }
@@ -137,26 +132,16 @@
     },
     {
       "typeId": 9,
-      "type": "struct U256",
+      "type": "struct R",
       "components": [
         {
-          "name": "a",
-          "type": 11,
+          "name": "q_1",
+          "type": 8,
           "typeArguments": null
         },
         {
-          "name": "b",
-          "type": 11,
-          "typeArguments": null
-        },
-        {
-          "name": "c",
-          "type": 11,
-          "typeArguments": null
-        },
-        {
-          "name": "d",
-          "type": 11,
+          "name": "q_2",
+          "type": 8,
           "typeArguments": null
         }
       ],
@@ -164,12 +149,51 @@
     },
     {
       "typeId": 10,
+      "type": "struct U256",
+      "components": [
+        {
+          "name": "a",
+          "type": 13,
+          "typeArguments": null
+        },
+        {
+          "name": "b",
+          "type": 13,
+          "typeArguments": null
+        },
+        {
+          "name": "c",
+          "type": 13,
+          "typeArguments": null
+        },
+        {
+          "name": "d",
+          "type": 13,
+          "typeArguments": null
+        }
+      ],
+      "typeParameters": null
+    },
+    {
+      "typeId": 11,
+      "type": "struct V",
+      "components": [
+        {
+          "name": "v",
+          "type": 1,
+          "typeArguments": null
+        }
+      ],
+      "typeParameters": null
+    },
+    {
+      "typeId": 12,
       "type": "u32",
       "components": null,
       "typeParameters": null
     },
     {
-      "typeId": 11,
+      "typeId": 13,
       "type": "u64",
       "components": null,
       "typeParameters": null
@@ -180,7 +204,7 @@
       "inputs": [
         {
           "name": "mystruct",
-          "type": 5,
+          "type": 6,
           "typeArguments": null
         }
       ],
@@ -198,7 +222,7 @@
       "logId": 0,
       "loggedType": {
         "name": "",
-        "type": 3,
+        "type": 4,
         "typeArguments": []
       }
     },
@@ -206,7 +230,7 @@
       "logId": 1,
       "loggedType": {
         "name": "",
-        "type": 3,
+        "type": 4,
         "typeArguments": []
       }
     },
@@ -214,7 +238,7 @@
       "logId": 2,
       "loggedType": {
         "name": "",
-        "type": 3,
+        "type": 4,
         "typeArguments": []
       }
     },
@@ -222,7 +246,7 @@
       "logId": 3,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -230,7 +254,7 @@
       "logId": 4,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -238,7 +262,7 @@
       "logId": 5,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -246,7 +270,7 @@
       "logId": 6,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -254,7 +278,7 @@
       "logId": 7,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -262,7 +286,7 @@
       "logId": 8,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -270,7 +294,7 @@
       "logId": 9,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -278,7 +302,7 @@
       "logId": 10,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -286,7 +310,7 @@
       "logId": 11,
       "loggedType": {
         "name": "",
-        "type": 10,
+        "type": 12,
         "typeArguments": null
       }
     },
@@ -294,7 +318,7 @@
       "logId": 12,
       "loggedType": {
         "name": "",
-        "type": 10,
+        "type": 12,
         "typeArguments": null
       }
     },
@@ -302,7 +326,7 @@
       "logId": 13,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -310,7 +334,7 @@
       "logId": 14,
       "loggedType": {
         "name": "",
-        "type": 11,
+        "type": 13,
         "typeArguments": null
       }
     },
@@ -318,7 +342,7 @@
       "logId": 15,
       "loggedType": {
         "name": "",
-        "type": 1,
+        "type": 2,
         "typeArguments": null
       }
     },
@@ -326,7 +350,7 @@
       "logId": 16,
       "loggedType": {
         "name": "",
-        "type": 1,
+        "type": 2,
         "typeArguments": null
       }
     },
@@ -334,7 +358,7 @@
       "logId": 17,
       "loggedType": {
         "name": "",
-        "type": 2,
+        "type": 3,
         "typeArguments": null
       }
     },
@@ -342,7 +366,7 @@
       "logId": 18,
       "loggedType": {
         "name": "",
-        "type": 2,
+        "type": 3,
         "typeArguments": null
       }
     },
@@ -350,7 +374,7 @@
       "logId": 19,
       "loggedType": {
         "name": "",
-        "type": 8,
+        "type": 9,
         "typeArguments": []
       }
     },
@@ -358,7 +382,7 @@
       "logId": 20,
       "loggedType": {
         "name": "",
-        "type": 8,
+        "type": 9,
         "typeArguments": []
       }
     },
@@ -366,7 +390,7 @@
       "logId": 21,
       "loggedType": {
         "name": "",
-        "type": 8,
+        "type": 9,
         "typeArguments": []
       }
     },
@@ -374,7 +398,15 @@
       "logId": 22,
       "loggedType": {
         "name": "",
-        "type": 8,
+        "type": 9,
+        "typeArguments": []
+      }
+    },
+    {
+      "logId": 23,
+      "loggedType": {
+        "name": "",
+        "type": 11,
         "typeArguments": []
       }
     }

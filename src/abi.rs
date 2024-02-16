@@ -115,7 +115,7 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
             type_id,
             type_arguments: decl.components.clone(),
         };
-        let param_type = ParamType::try_from_type_application(&type_application, &type_lookup)?;
+        let param_type = ParamType::try_from_type_application(&type_application, &type_lookup).expect("1");
         param_types.insert(type_id, param_type);
         types.insert(type_id, decl.clone());
     }
@@ -196,7 +196,7 @@ impl SchemaConstructor {
             .iter()
             .map(|type_application| {
                 let param_type =
-                    ParamType::try_from_type_application(&type_application, &type_lookup).unwrap();
+                    ParamType::try_from_type_application(&type_application, &type_lookup).expect("2");
                 Self::process_param_type(&type_application.name, param_type)
             })
             .flatten()

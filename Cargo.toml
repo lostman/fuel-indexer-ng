@@ -6,16 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fuel-vm = { version = "0.43.0", features = [ "test-helpers"] }
-fuel-asm = "0.43.0"
-fuel-tx = "0.43.0"
-fuels = "0.51.0"
+fuel-abi-types = "0.3.0"
+fuel-vm = { version = "0.45.0", features = [ "test-helpers"] }
+fuel-asm = "0.45.0"
+fuel-tx = "0.45.0"
+fuels = "0.52.0"
 anyhow = "1"
 tokio = "1"
 serde_json = "*"
 lazy_static = "1.4.0"
 sqlx = { version = "0.7.3", features = ["postgres", "runtime-tokio-rustls"] }
-fuel-abi-types = "0.3.0"
 sqlparser = "0.41.0"
 futures = "0.3.30"
 datamodel-renderer = { path = "../prisma-engines/schema-engine/datamodel-renderer" }

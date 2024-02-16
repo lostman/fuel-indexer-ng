@@ -55,6 +55,16 @@ impl TypeName for R {
     }
 }
 
+struct V {
+    v: [u64; 10]
+}
+
+impl TypeName for V {
+    fn type_name() -> str {
+        "struct V"
+    }
+} 
+
 fn main(mystruct: MyStruct) {
     let myotherstruct = MyOtherStruct {
         value: 34
@@ -116,4 +126,10 @@ fn main(mystruct: MyStruct) {
     ecal_lib::print_any(r2);
 
     assert_eq(r, r2);
+
+    let v = V {
+        v: [0,1,2,3,4,5,6,7,8,9]
+    };
+
+    ecal_lib::save(v);
 }
