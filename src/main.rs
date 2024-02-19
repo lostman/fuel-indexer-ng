@@ -74,10 +74,9 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     println!(">> DATABASE SCHEMA");
     let mut db_schema = crate::abi::SchemaConstructor::new();
     db_schema.process_program_abi(&abi);
-    let db = crate::ecal::DB.lock().unwrap().as_ref().unwrap().to_owned();
     for stmt in db_schema.statements() {
         println!("{};", stmt);
-        let result = sqlx::query(&format!("{stmt};")).execute(&db).await.unwrap();
+        let result = sqlx::query(&format!("{stmt};")).execute(&pool).await.unwrap();
         println!("{result:#?}");
     }
 

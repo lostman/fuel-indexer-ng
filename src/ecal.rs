@@ -24,12 +24,6 @@ fuels::macros::abigen!(Contract(
 
 use sqlx::{Pool, Postgres, Row};
 
-use std::sync::Mutex;
-
-lazy_static::lazy_static! {
-    pub static ref DB: Mutex<Option<Pool<Postgres>>> = Mutex::new(None);
-}
-
 #[derive(Debug, Clone)]
 pub struct MyEcal {
     pub abi: crate::ABI,
@@ -92,7 +86,7 @@ impl MyEcal {
         let stmt = save_any(&vm.ecal_state().abi, type_id, tokens);
         println!(">> SAVE_STMT\n{stmt}");
         let rows_affected = futures::executor::block_on(
-            sqlx::query(&stmt).execute(DB.lock().unwrap().as_ref().unwrap()),
+            sqlx::query(&stmt).execute(&vm.ecal_state().db_pool),
         )
         .unwrap()
         .rows_affected();
@@ -119,7 +113,7 @@ impl MyEcal {
             .strip_prefix("struct ")
             .unwrap()
             .to_string();
-        let struct_token = load_any(&vm.ecal_state().abi, struct_name, type_id as usize);
+        let struct_token = load_any(&vm.ecal_state().db_pool, &vm.ecal_state().abi, struct_name, type_id as usize);
         let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
 
         vm.allocate(output_bytes.len() as u64)?;
@@ -368,7 +362,7 @@ fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
 
 use std::collections::{BTreeMap, VecDeque};
 
-fn load_any(abi: &crate::ABI, struct_name: String, type_id: usize) -> Token {
+fn load_any(pool: &Pool<Postgres>, abi: &crate::ABI, struct_name: String, type_id: usize) -> Token {
     let mut context = HashMap::new();
     let (selects, joins, types) = load_any_rec(abi, HashSet::new(), &mut context, type_id as usize);
     let selects = selects.join(", ");
@@ -385,7 +379,7 @@ fn load_any(abi: &crate::ABI, struct_name: String, type_id: usize) -> Token {
 
     // TODO: handle empty result
     let row: sqlx::postgres::PgRow =
-        futures::executor::block_on(query.fetch_one(DB.lock().unwrap().as_ref().unwrap())).unwrap();
+        futures::executor::block_on(query.fetch_one(pool)).unwrap();
 
     println!("RESULT ROW IS_EMPTY={}", row.is_empty());
 
