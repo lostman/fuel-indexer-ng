@@ -1,8 +1,6 @@
 use anyhow::Context;
-use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufReader, Read};
-use std::sync::Mutex;
 
 use fuel_abi_types::abi::program::{ProgramABI, TypeApplication, TypeDeclaration};
 use fuels::types::param_types::ParamType;
@@ -14,16 +12,7 @@ mod sql {
     };
 }
 
-lazy_static! {
-    // map(type name => type id)
-    pub static ref TYPE_IDS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
-    // map(type id => param type)
-    pub static ref PARAM_TYPES: Mutex<BTreeMap<usize, ParamType>> = Mutex::new(BTreeMap::new());
-    // "types" section of the ABI
-    pub static ref TYPES: Mutex<BTreeMap<usize, TypeDeclaration>> = Mutex::new(BTreeMap::new());
-    static ref ABI_REF: Mutex<Option<ABI>> = Mutex::new(None);
-}
-
+#[derive(Debug, Clone)]
 pub struct ABI {
     // map(type name => type id)
     pub type_ids: BTreeMap<String, usize>,
@@ -39,48 +28,25 @@ pub fn print_abi(abi: &ABI) {
     println!(">> PARAM_TYPES");
     println!("{:#?}", abi.param_types);
 
-
     println!(">> TYPE_ID_MAP");
     println!("{:#?}", abi.type_ids);
-
 
     println!(">> TYPE_MAP");
     println!("{:#?}", abi.types);
 }
 
-pub fn param_type(type_id: usize) -> ParamType {
-    crate::abi::ABI_REF
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .param_types
-        .get(&type_id)
-        .unwrap()
-        .clone()
-}
+impl ABI {
+    pub fn param_type(&self, type_id: usize) -> ParamType {
+        self.param_types.get(&type_id).unwrap().clone()
+    }
 
-pub fn type_declaration(type_id: usize) -> TypeDeclaration {
-    crate::abi::ABI_REF
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .types
-        .get(&type_id)
-        .unwrap()
-        .clone()
-}
+    pub fn type_declaration(&self, type_id: usize) -> TypeDeclaration {
+        self.types.get(&type_id).unwrap().clone()
+    }
 
-pub fn type_id(type_name: &str) -> usize {
-    *crate::abi::ABI_REF
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .type_ids
-        .get(type_name)
-        .expect(&format!("{type_name}"))
+    pub fn type_id(&self, type_name: &str) -> usize {
+        *self.type_ids.get(type_name).expect(&format!("{type_name}"))
+    }
 }
 
 pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
@@ -115,7 +81,8 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
             type_id,
             type_arguments: decl.components.clone(),
         };
-        let param_type = ParamType::try_from_type_application(&type_application, &type_lookup).expect("1");
+        let param_type =
+            ParamType::try_from_type_application(&type_application, &type_lookup).expect("1");
         param_types.insert(type_id, param_type);
         types.insert(type_id, decl.clone());
     }
@@ -141,7 +108,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
         logged_types.insert(log_id, type_id);
     }
 
-
     let abi = ABI {
         types,
         type_ids,
@@ -150,10 +116,6 @@ pub fn parse_abi(script_abi_path: &str) -> anyhow::Result<ABI> {
     };
 
     Ok(abi)
-}
-
-pub fn set_ecal_abi(abi: ABI) {
-    *ABI_REF.lock().unwrap() = Some(abi);
 }
 
 pub struct SchemaConstructor {
@@ -196,7 +158,8 @@ impl SchemaConstructor {
             .iter()
             .map(|type_application| {
                 let param_type =
-                    ParamType::try_from_type_application(&type_application, &type_lookup).expect("2");
+                    ParamType::try_from_type_application(&type_application, &type_lookup)
+                        .expect("2");
                 Self::process_param_type(&type_application.name, param_type)
             })
             .flatten()

@@ -30,8 +30,11 @@ lazy_static::lazy_static! {
     pub static ref DB: Mutex<Option<Pool<Postgres>>> = Mutex::new(None);
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MyEcal;
+#[derive(Debug, Clone)]
+pub struct MyEcal {
+    pub abi: crate::ABI,
+    pub db_pool: Pool<Postgres>,
+}
 
 impl EcalHandler for MyEcal {
     fn ecal<S, Tx>(
@@ -81,12 +84,12 @@ impl MyEcal {
             bytes
         };
 
-        let param_type = crate::abi::param_type(type_id);
+        let param_type = vm.ecal_state_mut().abi.param_type(type_id);
         let tokens = ABIDecoder::new(DecoderConfig::default())
             .decode(&param_type, data.as_ref())
             .unwrap();
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
-        let stmt = save_any(type_id, tokens);
+        let stmt = save_any(&vm.ecal_state().abi, type_id, tokens);
         println!(">> SAVE_STMT\n{stmt}");
         let rows_affected = futures::executor::block_on(
             sqlx::query(&stmt).execute(DB.lock().unwrap().as_ref().unwrap()),
@@ -108,12 +111,15 @@ impl MyEcal {
         let type_id = vm.registers()[rb];
         println!("> ECAL::load(type_id={type_id})");
 
-        let struct_name = crate::abi::type_declaration(type_id as usize)
+        let struct_name = vm
+            .ecal_state_mut()
+            .abi
+            .type_declaration(type_id as usize)
             .type_field
             .strip_prefix("struct ")
             .unwrap()
             .to_string();
-        let struct_token = load_any(struct_name, type_id as usize);
+        let struct_token = load_any(&vm.ecal_state().abi, struct_name, type_id as usize);
         let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
 
         vm.allocate(output_bytes.len() as u64)?;
@@ -250,12 +256,12 @@ impl MyEcal {
 
         // println!("print_any_ecal type_id = {type_id}");
 
-        let param_type = crate::abi::param_type(type_id);
+        let param_type = vm.ecal_state_mut().abi.param_type(type_id);
         let tokens = ABIDecoder::new(DecoderConfig::default())
             .decode(&param_type, data.as_ref())
             .unwrap();
         // println!("> print_any = {tokens:?}");
-        let result = pretty_print(type_id, tokens);
+        let result = pretty_print(&vm.ecal_state().abi, type_id, tokens);
         println!("> PRINT_ANY:");
         println!("{result}");
 
@@ -288,7 +294,7 @@ impl MyEcal {
             String::from_utf8(bytes).unwrap()
         };
 
-        let type_id = crate::abi::type_id(&type_name);
+        let type_id = vm.ecal_state_mut().abi.type_id(&type_name);
 
         vm.registers_mut()[rb] = type_id as u64;
 
@@ -297,8 +303,13 @@ impl MyEcal {
 }
 
 // Given a type id and encoded data, it pretty-prints the data.
-fn pretty_print(type_id: usize, tok: Token) -> String {
-    fn pretty_print_inner(indent: usize, decl: TypeDeclaration, tok: Token) -> String {
+fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
+    fn pretty_print_inner(
+        abi: &crate::ABI,
+        indent: usize,
+        decl: TypeDeclaration,
+        tok: Token,
+    ) -> String {
         match tok {
             Token::Unit => "()".to_string(),
             Token::U64(x) => format!("{}", x),
@@ -310,12 +321,12 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
                 for (i, field) in fields.into_iter().enumerate() {
                     let name: String = comps[i].name.clone();
                     let type_id: usize = comps[i].type_id;
-                    let decl = crate::abi::type_declaration(type_id);
+                    let decl = abi.type_declaration(type_id);
                     result.push(
                         " ".repeat(indent)
                             + &name
                             + " = "
-                            + &pretty_print_inner(indent, decl, field),
+                            + &pretty_print_inner(abi, indent, decl, field),
                     )
                 }
 
@@ -336,8 +347,8 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
                 let mut result = vec![];
                 for (i, field) in fields.into_iter().enumerate() {
                     let type_id: usize = comps[i].type_id as usize;
-                    let decl = crate::abi::type_declaration(type_id);
-                    result.push(" ".repeat(indent) + &pretty_print_inner(indent, decl, field))
+                    let decl = abi.type_declaration(type_id);
+                    result.push(" ".repeat(indent) + &pretty_print_inner(abi, indent, decl, field))
                 }
                 "(\n".to_string() + &result.join(",\n") + "\n" + &" ".repeat(indent - 4) + ")"
             }
@@ -347,8 +358,8 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
             _ => unimplemented!("pretty_print {tok:#?}"),
         }
     }
-    let decl = crate::abi::type_declaration(type_id);
-    pretty_print_inner(0, decl, tok)
+    let decl = abi.type_declaration(type_id);
+    pretty_print_inner(abi, 0, decl, tok)
 }
 
 // WITH
@@ -357,13 +368,13 @@ fn pretty_print(type_id: usize, tok: Token) -> String {
 
 use std::collections::{BTreeMap, VecDeque};
 
-fn load_any(struct_name: String, type_id: usize) -> Token {
+fn load_any(abi: &crate::ABI, struct_name: String, type_id: usize) -> Token {
     let mut context = HashMap::new();
-    let (selects, joins, types) = load_any_rec(HashSet::new(), &mut context, type_id as usize);
+    let (selects, joins, types) = load_any_rec(abi, HashSet::new(), &mut context, type_id as usize);
     let selects = selects.join(", ");
     let joins = joins.join(" ");
 
-    let types: Vec<ParamType> = types.iter().map(|t| crate::abi::param_type(*t)).collect();
+    let types: Vec<ParamType> = types.iter().map(|t| abi.param_type(*t)).collect();
     // TODO: until `load` accepts filter parameter, return a single value as a proof of concept
     let query_string =
         format!("SELECT {selects} FROM \"{struct_name}\" AS \"{struct_name}_0\" {joins} LIMIT 1");
@@ -405,9 +416,10 @@ fn load_any(struct_name: String, type_id: usize) -> Token {
         tokens.push_back(tok);
     }
 
-    let decl = crate::abi::type_declaration(type_id as usize);
+    let decl = abi.type_declaration(type_id as usize);
 
     fn convert(
+        abi: &crate::ABI,
         index: &mut usize,
         row: &sqlx::postgres::PgRow,
         decl: TypeDeclaration,
@@ -417,8 +429,8 @@ fn load_any(struct_name: String, type_id: usize) -> Token {
         if is_struct(&decl) && !is_u256(&decl) {
             let mut struct_tokens = vec![];
             for field in decl.components.unwrap().iter() {
-                let field_decl = crate::abi::type_declaration(field.type_id);
-                let field_tokens = convert(index, row, field_decl, params);
+                let field_decl = abi.type_declaration(field.type_id);
+                let field_tokens = convert(abi, index, row, field_decl, params);
                 struct_tokens.push(field_tokens)
             }
             Token::Struct(struct_tokens)
@@ -446,16 +458,17 @@ fn load_any(struct_name: String, type_id: usize) -> Token {
         }
     }
 
-    convert(&mut 0, &row, decl, &mut types.into())
+    convert(abi, &mut 0, &row, decl, &mut types.into())
 }
 
 fn load_any_rec(
+    abi: &crate::ABI,
     mut unique_joins: HashSet<String>,
     context: &mut HashMap<String, usize>,
     type_id: usize,
 ) -> (Vec<String>, Vec<String>, Vec<usize>) {
     println!("load_any_rec unique_joins={unique_joins:#?}");
-    let decl = crate::abi::type_declaration(type_id);
+    let decl = abi.type_declaration(type_id);
 
     let mut struct_columns: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut selects: Vec<String> = vec![];
@@ -473,7 +486,7 @@ fn load_any_rec(
     struct_columns.insert(struct_name.clone(), columns);
 
     for field in decl.components.as_ref().unwrap().iter() {
-        let field_decl = crate::abi::type_declaration(field.type_id);
+        let field_decl = abi.type_declaration(field.type_id);
         if is_struct(&field_decl) && !is_u256(&field_decl) {
             println!("FOO");
             let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
@@ -491,7 +504,7 @@ fn load_any_rec(
             }
 
             let (nested_selects, nested_joins, nested_types) =
-                load_any_rec(unique_joins.clone(), context, field.type_id);
+                load_any_rec(abi, unique_joins.clone(), context, field.type_id);
             println!("NESTED:\n{nested_selects:#?}\n{nested_joins:#?}");
 
             selects.extend(nested_selects);
@@ -513,18 +526,19 @@ fn load_any_rec(
     (selects, joins, types)
 }
 
-fn save_any(type_id: usize, struct_tokens: Token) -> String {
-    let (_, stmts) = save_any_rec(HashSet::new(), type_id, struct_tokens);
+fn save_any(abi: &crate::ABI, type_id: usize, struct_tokens: Token) -> String {
+    let (_, stmts) = save_any_rec(abi, HashSet::new(), type_id, struct_tokens);
     let stmts = stmts.join(", ");
     format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)")
 }
 
 fn save_any_rec(
+    abi: &crate::ABI,
     mut unique_stmts: HashSet<String>,
     type_id: usize,
     struct_tokens: Token,
 ) -> (HashSet<String>, Vec<String>) {
-    let decl = crate::abi::type_declaration(type_id);
+    let decl = abi.type_declaration(type_id);
     println!(">> SAVE_ANY {type_id} {struct_tokens:#?}");
     let toks = expect_struct_tokens(&struct_tokens);
     let mut stmts = vec![];
@@ -535,7 +549,7 @@ fn save_any_rec(
         .unwrap()
         .iter()
         .map(|field| {
-            let decl = &crate::abi::type_declaration(field.type_id);
+            let decl = abi.type_declaration(field.type_id);
             if is_struct(&decl) && !is_u256(&decl) {
                 format!("\"{}Id\"", field.name)
             } else {
@@ -543,12 +557,12 @@ fn save_any_rec(
             }
         })
         .collect();
-    if has_nested_struct(&decl) {
+    if has_nested_struct(abi, &decl) {
         let mut selects: Vec<String> = vec![];
         let mut sources: Vec<String> = vec![];
         let mut wheres = vec![];
         for (i, field) in decl.components.as_ref().unwrap().iter().enumerate() {
-            let field_decl = crate::abi::type_declaration(field.type_id);
+            let field_decl = abi.type_declaration(field.type_id);
             let field_name = if is_struct(&field_decl) {
                 format!("{}Id", field.name)
             } else {
@@ -559,7 +573,7 @@ fn save_any_rec(
             } else if is_struct(&field_decl) {
                 let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
                 let (nested_unique, nested_stmts) =
-                    save_any_rec(unique_stmts.clone(), field_decl.type_id, toks[i].clone());
+                    save_any_rec(abi, unique_stmts.clone(), field_decl.type_id, toks[i].clone());
                 stmts.push(nested_stmts);
                 unique_stmts.extend(nested_unique.into_iter());
 
@@ -651,10 +665,10 @@ fn expect_struct_tokens(struct_token: &Token) -> &Vec<Token> {
     }
 }
 
-fn decl_fields(decl: &TypeDeclaration) -> Vec<TypeDeclaration> {
+fn decl_fields(abi: &crate::ABI, decl: &TypeDeclaration) -> Vec<TypeDeclaration> {
     let mut result = vec![];
     for field in decl.components.as_ref().unwrap() {
-        let field_decl = crate::abi::type_declaration(field.type_id);
+        let field_decl = abi.type_declaration(field.type_id);
         result.push(field_decl)
     }
     result
@@ -668,8 +682,8 @@ fn is_u256(x: &TypeDeclaration) -> bool {
     x.type_field.starts_with("struct U256")
 }
 
-fn has_nested_struct(decl: &TypeDeclaration) -> bool {
-    for field_decl in decl_fields(decl) {
+fn has_nested_struct(abi: &crate::ABI, decl: &TypeDeclaration) -> bool {
+    for field_decl in decl_fields(abi, decl) {
         if is_struct(&field_decl) {
             return true;
         }
