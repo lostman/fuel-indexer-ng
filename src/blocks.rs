@@ -115,15 +115,9 @@ impl Iterator for BlocksIter {
             transactions.extend(std::iter::repeat(None).take(30 - transactions.len()));
 
             let fb = block_indexer::FuelBlock {
-                // TODO: reenable
-                // block_id: Bits256::from(AssetId::new(block.id.try_into().unwrap())),
-                // header,
-                // transactions: transactions.try_into().unwrap(),
-                // transaction: block_indexer::Transaction::Create(block_indexer::Create {
-                //     bytecode_length: 777,
-                //     bytecode_witness_index: 0u8,
-                // }),
                 transaction: transactions[0].as_ref().unwrap().clone(),
+                // transactions: transactions.try_into().unwrap(),
+                
             };
 
             let b = block.header.height;

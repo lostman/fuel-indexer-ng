@@ -86,7 +86,8 @@ impl MyEcal {
             .decode(&param_type, data.as_ref())
             .unwrap();
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
-        let stmt = save_any(&vm.ecal_state().abi, type_id, tokens);
+        // let stmt = save_any(&vm.ecal_state().abi, type_id, tokens);
+        let stmt = SaveStmtBuilder::new(vm.ecal_state().abi.clone()).generate_stmt(type_id, tokens);
         println!(">> SAVE_STMT\n{stmt}");
         let rows_affected =
             futures::executor::block_on(sqlx::query(&stmt).execute(&vm.ecal_state().db_pool))
@@ -611,140 +612,99 @@ fn load_any_rec(
     (selects, joins, types)
 }
 
-fn save_any(abi: &crate::ABI, type_id: usize, target_value: Token) -> String {
-    let (_, stmts) = save_any_rec(abi, HashSet::new(), type_id, target_value);
-    let stmts = stmts.join(", ");
-    format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)")
+struct SaveStmtBuilder {
+    unique_stmts: HashSet<String>,
+    stmts: Vec<String>,
+    abi: crate::ABI,
 }
 
-fn save_any_rec(
-    abi: &crate::ABI,
-    mut unique_stmts: HashSet<String>,
-    type_id: usize,
-    target_value: Token,
-) -> (HashSet<String>, Vec<String>) {
-    let target_decl = abi.type_declaration(type_id);
-    println!(
-        ">> SAVE_ANY type_id={type_id} type={} tokens={target_value:#?}",
-        target_decl.type_field
-    );
-    let toks = if target_decl.is_struct() {
-        target_value.as_struct().clone()
-    } else {
-        vec![target_value.as_enum().1]
-    };
-    let mut stmts = vec![];
-    let struct_name = target_decl.struct_or_enum_name().unwrap();
-    let mut columns: Vec<String> = target_decl
-        .components
-        .as_ref()
-        .unwrap()
-        .iter()
-        .map(|field| {
-            let decl = abi.type_declaration(field.type_id);
-            if decl.is_struct() || decl.is_enum() && !decl.is_u256() {
-                format!("\"{}Id\"", field.name)
-            } else {
-                format!("{}", field.name)
-            }
-        })
-        .collect();
-    if has_nested_struct(abi, &target_decl) || has_nested_enum(abi, &target_decl) {
-        let mut selects: Vec<String> = vec![];
-        let mut sources: Vec<String> = vec![];
-        let mut wheres = vec![];
-        let zzz = if target_decl.is_enum() {
-            let n = target_value.as_enum().0;
-            let k = target_decl.components.as_ref().unwrap()[n as usize].clone();
-            let v = vec![k];
-            v
+impl SaveStmtBuilder {
+    pub fn new(abi: crate::ABI) -> Self {
+        Self {
+            abi,
+            stmts: vec![],
+            unique_stmts: HashSet::new(),
+        }
+    }
+
+    pub fn generate_stmt(&mut self, type_id: usize, target_value: Token) -> String {
+        self.save_value(type_id, target_value);
+        let stmts = self.stmts.join(", ");
+        format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)")
+    }
+
+    fn save_value(&mut self, type_id: usize, target_value: Token) {
+        let target_decl = self.abi.type_declaration(type_id);
+        println!(
+            ">> SAVE_ANY type_id={type_id} type={} tokens={target_value:#?}",
+            target_decl.type_field
+        );
+        let toks = if target_decl.is_struct() {
+            target_value.as_struct().clone()
         } else {
-            target_decl.components.as_ref().unwrap().clone()
+            vec![target_value.as_enum().1]
         };
-        for (i, field) in zzz.iter().enumerate() {
-            let field_decl = abi.type_declaration(field.type_id);
-            println!("DECL i={} type={}", i, field_decl.type_field);
-            let field_name = if field_decl.is_struct() || field_decl.is_enum() {
-                format!("{}Id", field.name)
+        let mut stmts: Vec<String> = vec![];
+        let struct_name = target_decl.struct_or_enum_name().unwrap();
+        let mut columns: Vec<String> = target_decl
+            .components
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|field| {
+                let decl = self.abi.type_declaration(field.type_id);
+                if decl.is_struct() || decl.is_enum() && !decl.is_u256() {
+                    format!("\"{}Id\"", field.name)
+                } else {
+                    format!("{}", field.name)
+                }
+            })
+            .collect();
+        if has_nested_struct(&self.abi, &target_decl) || has_nested_enum(&self.abi, &target_decl) {
+            let mut selects: Vec<String> = vec![];
+            let mut sources: Vec<String> = vec![];
+            let mut wheres = vec![];
+            let zzz = if target_decl.is_enum() {
+                let n = target_value.as_enum().0;
+                let k = target_decl.components.as_ref().unwrap()[n as usize].clone();
+                let v = vec![k];
+                v
             } else {
-                field.name.clone()
+                target_decl.components.as_ref().unwrap().clone()
             };
+            for (i, field) in zzz.iter().enumerate() {
+                let field_decl = self.abi.type_declaration(field.type_id);
+                println!("DECL i={} type={}", i, field_decl.type_field);
+                let field_name = if field_decl.is_struct() || field_decl.is_enum() {
+                    format!("{}Id", field.name)
+                } else {
+                    field.name.clone()
+                };
 
-            //
-            // U256
-            //
-            if field_decl.is_u256() {
-                selects.push(tok_to_string(&toks[i]));
-            //
-            // ENUM
-            //
-            } else if field_decl.is_enum() {
-                let field_struct_name = field_decl.struct_or_enum_name().unwrap();
+                //
+                // U256
+                //
+                if field_decl.is_u256() {
+                    selects.push(tok_to_string(&toks[i]));
+                //
+                // ENUM
+                //
+                } else if field_decl.is_enum() {
+                    let field_struct_name = field_decl.struct_or_enum_name().unwrap();
 
-                let (nested_unique, nested_stmts) = save_any_rec(
-                    abi,
-                    unique_stmts.clone(),
-                    field_decl.type_id,
-                    if field_decl.is_struct() {
-                        toks[i].clone()
-                    } else {
-                        toks[0].clone()
-                    },
-                );
-                stmts.push(nested_stmts);
-                unique_stmts.extend(nested_unique.into_iter());
+                    self.save_value(
+                        field_decl.type_id,
+                        if field_decl.is_struct() {
+                            toks[i].clone()
+                        } else {
+                            toks[0].clone()
+                        },
+                    );
 
-                let field_struct_hash = hash_tokens(&vec![toks[i].as_enum().1]);
+                    let field_struct_hash = hash_tokens(&vec![toks[i].as_enum().1]);
 
-                for variant in target_decl.components.as_ref().unwrap() {
-                    println!("VARIANT:\n{variant:#?}");
-                    if target_decl.is_enum() && variant.name != field.name {
-                        // NULLs for the values of other variants
-                        selects.push(format!("NULL as {}Id", variant.name));
-                    } else {
-                        // Id for the value of active variant
-                        selects.push(format!(
-                            "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
-                        ));
-                    }
-                }
-
-                let source = format!("{field_struct_name}_id_{field_struct_hash}");
-
-                if !sources.contains(&source) {
-                    sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
-                }
-
-                wheres.push(format!(
-                    "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
-                ));
-            //
-            // STRUCT
-            //
-            } else if field_decl.is_struct() {
-                let field_struct_name = field_decl.struct_or_enum_name().unwrap();
-                let (nested_unique, nested_stmts) = save_any_rec(
-                    abi,
-                    unique_stmts.clone(),
-                    field_decl.type_id,
-                    if field_decl.is_struct() {
-                        toks[i].clone()
-                    } else {
-                        toks[0].clone()
-                    },
-                );
-                stmts.push(nested_stmts);
-                unique_stmts.extend(nested_unique.into_iter());
-
-                let field_struct_hash = hash_tokens(&toks[i].as_struct());
-
-                if target_decl.is_struct() {
-                    selects.push(format!(
-                        "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
-                    ));
-                } else if target_decl.is_enum() {
                     for variant in target_decl.components.as_ref().unwrap() {
-                        println!("VARIANT 2:\n{variant:#?}");
+                        println!("VARIANT:\n{variant:#?}");
                         if target_decl.is_enum() && variant.name != field.name {
                             // NULLs for the values of other variants
                             selects.push(format!("NULL as {}Id", variant.name));
@@ -755,76 +715,117 @@ fn save_any_rec(
                             ));
                         }
                     }
+
+                    let source = format!("{field_struct_name}_id_{field_struct_hash}");
+
+                    if !sources.contains(&source) {
+                        sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
+                    }
+
+                    wheres.push(format!(
+                            "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
+                        ));
+                //
+                // STRUCT
+                //
+                } else if field_decl.is_struct() {
+                    let field_struct_name = field_decl.struct_or_enum_name().unwrap();
+                    self.save_value(
+                        field_decl.type_id,
+                        if field_decl.is_struct() {
+                            toks[i].clone()
+                        } else {
+                            toks[0].clone()
+                        },
+                    );
+
+                    let field_struct_hash = hash_tokens(&toks[i].as_struct());
+
+                    if target_decl.is_struct() {
+                        selects.push(format!(
+                            "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                        ));
+                    } else if target_decl.is_enum() {
+                        for variant in target_decl.components.as_ref().unwrap() {
+                            println!("VARIANT 2:\n{variant:#?}");
+                            if target_decl.is_enum() && variant.name != field.name {
+                                // NULLs for the values of other variants
+                                selects.push(format!("NULL as {}Id", variant.name));
+                            } else {
+                                // Id for the value of active variant
+                                selects.push(format!(
+                                    "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                                ));
+                            }
+                        }
+                    }
+
+                    let source = format!("{field_struct_name}_id_{field_struct_hash}");
+
+                    if !sources.contains(&source) {
+                        sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
+                    }
+
+                    wheres.push(format!(
+                            "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
+                        ));
+                //
+                // OTHER
+                //
+                } else {
+                    let tok = toks[i].clone();
+                    selects.push(tok_to_string(&tok));
+                    wheres.push(format!("\"{field_name}\" = {}", tok_to_string(&tok)));
                 }
+            }
+            let selects = selects.join(", ");
+            let sources = sources.join(", ");
+            let wheres = wheres.join(" AND ");
+            let hash = hash_tokens(&toks);
 
-                let source = format!("{field_struct_name}_id_{field_struct_hash}");
+            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id)", columns = columns.join(", "));
+            self.push_stmt(stmt);
 
-                if !sources.contains(&source) {
-                    sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
+            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres} LIMIT 1)");
+            self.push_stmt(stmt);
+        } else {
+            let mut where_clause = vec![];
+            let mut values: Vec<String> = vec![];
+            for (i, t) in toks.iter().enumerate() {
+                let col = columns[i].clone();
+
+                if t.is_enum() {
+                    let (n, inner, _) = t.as_enum();
+                    where_clause.push(format!("\"{}Variant\" = {}", col, n));
+                    where_clause.push(format!("{}Id = {}", col, 9876));
+
+                    columns[i] = format!("{col}Id");
+                    columns.insert(i, format!("\"{col}Variant\""));
+
+                    values.push("3".to_string());
+                    values.push(n.to_string());
+                } else {
+                    where_clause.push(format!("{} = {}", col, tok_to_string(t)));
+                    values.push(tok_to_string(t));
                 }
-
-                wheres.push(format!(
-                    "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
-                ));
-            //
-            // OTHER
-            //
-            } else {
-                let tok = toks[i].clone();
-                selects.push(tok_to_string(&tok));
-                wheres.push(format!("\"{field_name}\" = {}", tok_to_string(&tok)));
             }
-        }
-        let selects = selects.join(", ");
-        let sources = sources.join(", ");
-        let wheres = wheres.join(" AND ");
-        let hash = hash_tokens(&toks);
+            let where_clause = where_clause.join(" AND ");
 
-        let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id)", columns = columns.join(", "));
-        if unique_stmts.insert(stmt.clone()) {
-            stmts.push(vec![stmt]);
-        };
+            let hash = hash_tokens(&toks);
 
-        let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres} LIMIT 1)");
-        if unique_stmts.insert(stmt.clone()) {
-            stmts.push(vec![stmt]);
-        }
-    } else {
-        let mut where_clause = vec![];
-        let mut values: Vec<String> = vec![];
-        for (i, t) in toks.iter().enumerate() {
-            let col = columns[i].clone();
+            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
+            self.push_stmt(stmt);
 
-            if t.is_enum() {
-                let (n, inner, _) = t.as_enum();
-                where_clause.push(format!("\"{}Variant\" = {}", col, n));
-                where_clause.push(format!("{}Id = {}", col, 9876));
-
-                columns[i] = format!("{col}Id");
-                columns.insert(i, format!("\"{col}Variant\""));
-
-                values.push("3".to_string());
-                values.push(n.to_string());
-            } else {
-                where_clause.push(format!("{} = {}", col, tok_to_string(t)));
-                values.push(tok_to_string(t));
-            }
-        }
-        let where_clause = where_clause.join(" AND ");
-
-        let hash = hash_tokens(&toks);
-
-        let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
-        if unique_stmts.insert(stmt.clone()) {
-            stmts.push(vec![stmt]);
-        };
-
-        let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
-        if unique_stmts.insert(stmt.clone()) {
-            stmts.push(vec![stmt]);
+            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
+            self.push_stmt(stmt);
         }
     }
-    (unique_stmts, stmts.into_iter().flatten().collect())
+
+    fn push_stmt(&mut self, s: String) {
+        if self.unique_stmts.insert(s.clone()) {
+            self.stmts.push(s);
+        }
+    }
 }
 
 trait TokenExt {
