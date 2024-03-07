@@ -25,7 +25,8 @@ fuels::macros::abigen!(Contract(
 ));
 
 use sqlx::{Pool, Postgres, Row};
-use strum::VariantNames;
+
+use crate::extensions::*;
 
 #[derive(Debug, Clone)]
 pub struct MyEcal {
@@ -660,7 +661,7 @@ impl SaveStmtBuilder {
                 }
             })
             .collect();
-        if has_nested_struct(&self.abi, &target_decl) || has_nested_enum(&self.abi, &target_decl) {
+        if target_decl.has_nested_struct(&self.abi) || target_decl.has_nested_enum(&self.abi) {
             let mut selects: Vec<String> = vec![];
             let mut sources: Vec<String> = vec![];
             let mut wheres = vec![];
@@ -897,54 +898,4 @@ fn hash_tokens(tokens: &Vec<Token>) -> u64 {
     let s: String = format!("{tokens:#?}");
     s.hash(&mut hasher);
     hasher.finish()
-}
-
-pub trait TypeDeclarationExt {
-    fn struct_or_enum_name(&self) -> Option<String>;
-    fn decl_fields(&self, abi: &crate::ABI) -> Vec<TypeDeclaration>;
-    fn is_u256(&self) -> bool;
-    fn is_enum(&self) -> bool;
-    fn is_struct(&self) -> bool;
-}
-
-impl TypeDeclarationExt for TypeDeclaration {
-    fn struct_or_enum_name(&self) -> Option<String> {
-        self.type_field
-            .strip_prefix("struct ")
-            .or(self.type_field.strip_prefix("enum "))
-            .map(std::string::ToString::to_string)
-    }
-
-    fn decl_fields(&self, abi: &crate::ABI) -> Vec<TypeDeclaration> {
-        let mut result = vec![];
-        for field in self.components.as_ref().unwrap() {
-            let field_decl = abi.type_declaration(field.type_id);
-            result.push(field_decl)
-        }
-        result
-    }
-
-    fn is_struct(&self) -> bool {
-        self.type_field.starts_with("struct")
-    }
-
-    fn is_enum(&self) -> bool {
-        self.type_field.starts_with("enum")
-    }
-
-    fn is_u256(&self) -> bool {
-        self.type_field.starts_with("struct U256")
-    }
-}
-
-fn has_nested_struct(abi: &crate::ABI, decl: &TypeDeclaration) -> bool {
-    decl.decl_fields(abi)
-        .iter()
-        .any(TypeDeclarationExt::is_struct)
-}
-
-fn has_nested_enum(abi: &crate::ABI, decl: &TypeDeclaration) -> bool {
-    decl.decl_fields(abi)
-        .iter()
-        .any(TypeDeclarationExt::is_enum)
 }

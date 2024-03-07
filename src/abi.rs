@@ -1,14 +1,13 @@
 use anyhow::Context;
+use case::CaseExt;
 use sqlparser::ast::ColumnDef;
-use std::any::Any;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufReader, Read};
 
 use fuel_abi_types::abi::program::{ProgramABI, TypeApplication, TypeDeclaration};
 use fuels::types::param_types::ParamType;
 
-use crate::ecal::TypeDeclarationExt;
-use case::CaseExt;
+use crate::extensions::TypeDeclarationExt;
 
 mod sql {
     pub use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;

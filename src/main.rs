@@ -19,6 +19,7 @@ mod blocks;
 mod ecal;
 mod prisma;
 mod types;
+mod extensions;
 
 use crate::abi::{print_abi, ABI};
 use crate::ecal::MyEcal;
