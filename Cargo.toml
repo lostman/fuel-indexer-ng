@@ -10,6 +10,8 @@ fuel-abi-types = "0.3.0"
 fuel-vm = { version = "0.45.0", features = [ "test-helpers"] }
 fuel-asm = "0.45.0"
 fuel-tx = "0.45.0"
+fuel-core-client = "0.21"
+fuel-core-types = "0.21"
 fuels = "0.52.0"
 anyhow = "1"
 tokio = "1"
@@ -20,3 +22,10 @@ futures = "0.3.30"
 datamodel-renderer = { path = "../prisma-engines/schema-engine/datamodel-renderer" }
 psl = { path = "../prisma-engines/psl/psl" }
 hex = "0.4.3"
+getrandom = { version = "0.2", features = ["js"] }
+prost = "0.12"
+strum = "*"
+case = "1.0.0"
+
+[build-dependencies]
+prost-build = { version = "0.12" }

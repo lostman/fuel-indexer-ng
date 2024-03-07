@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
+use std::ops::Deref;
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -14,6 +15,7 @@ use fuel_vm::{
     prelude::{Interpreter, MemoryRange},
 };
 use fuels::core::codec::{ABIDecoder, ABIEncoder, DecoderConfig};
+use fuels::types::enum_variants::EnumVariants;
 use fuels::types::param_types::ParamType;
 use fuels::types::Token;
 
@@ -23,6 +25,7 @@ fuels::macros::abigen!(Contract(
 ));
 
 use sqlx::{Pool, Postgres, Row};
+use strum::VariantNames;
 
 #[derive(Debug, Clone)]
 pub struct MyEcal {
@@ -85,11 +88,10 @@ impl MyEcal {
         println!(">> SAVE_ANY_TOKENS\n{tokens:#?}");
         let stmt = save_any(&vm.ecal_state().abi, type_id, tokens);
         println!(">> SAVE_STMT\n{stmt}");
-        let rows_affected = futures::executor::block_on(
-            sqlx::query(&stmt).execute(&vm.ecal_state().db_pool),
-        )
-        .unwrap()
-        .rows_affected();
+        let rows_affected =
+            futures::executor::block_on(sqlx::query(&stmt).execute(&vm.ecal_state().db_pool))
+                .unwrap()
+                .rows_affected();
         println!(">> ROWS_AFFECTED {rows_affected}");
 
         Ok(())
@@ -113,7 +115,12 @@ impl MyEcal {
             .strip_prefix("struct ")
             .unwrap()
             .to_string();
-        let struct_token = load_any(&vm.ecal_state().db_pool, &vm.ecal_state().abi, struct_name, type_id as usize);
+        let struct_token = load_any(
+            &vm.ecal_state().db_pool,
+            &vm.ecal_state().abi,
+            struct_name,
+            type_id as usize,
+        );
         let output_bytes = ABIEncoder::encode(&vec![struct_token]).unwrap().resolve(0);
 
         vm.allocate(output_bytes.len() as u64)?;
@@ -253,7 +260,7 @@ impl MyEcal {
         let param_type = vm.ecal_state_mut().abi.param_type(type_id);
         let tokens = ABIDecoder::new(DecoderConfig::default())
             .decode(&param_type, data.as_ref())
-            .unwrap();
+            .expect(&format!("{param_type:#?}"));
         // println!("> print_any = {tokens:?}");
         let result = pretty_print(&vm.ecal_state().abi, type_id, tokens);
         println!("> PRINT_ANY:");
@@ -302,12 +309,16 @@ fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
         abi: &crate::ABI,
         indent: usize,
         decl: TypeDeclaration,
+        // For processing Option<T> types, need to pass the TypeDeclaration for T down.
+        inner_decl: Option<TypeDeclaration>,
         tok: Token,
     ) -> String {
         match tok {
             Token::Unit => "()".to_string(),
             Token::U64(x) => format!("{}", x),
             Token::U32(x) => format!("{}", x),
+            Token::U16(x) => format!("{}", x),
+            Token::U8(x) => format!("{}", x),
             Token::Struct(fields) => {
                 let indent = indent + 4;
                 let comps = decl.components.unwrap();
@@ -320,7 +331,7 @@ fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
                         " ".repeat(indent)
                             + &name
                             + " = "
-                            + &pretty_print_inner(abi, indent, decl, field),
+                            + &pretty_print_inner(abi, indent, decl, None, field),
                     )
                 }
 
@@ -342,18 +353,99 @@ fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
                 for (i, field) in fields.into_iter().enumerate() {
                     let type_id: usize = comps[i].type_id as usize;
                     let decl = abi.type_declaration(type_id);
-                    result.push(" ".repeat(indent) + &pretty_print_inner(abi, indent, decl, field))
+                    result.push(
+                        " ".repeat(indent) + &pretty_print_inner(abi, indent, decl, None, field),
+                    )
                 }
                 "(\n".to_string() + &result.join(",\n") + "\n" + &" ".repeat(indent - 4) + ")"
             }
             Token::B256(bytes) => hex::encode(bytes),
             Token::U256(value) => hex::encode(Into::<[u8; 32]>::into(value)),
             Token::Bool(b) => format!("{b}"),
+            Token::Array(elems) => {
+                let inner_type = &decl.components.as_ref().unwrap()[0];
+                // the inner_decl passed to the function; TODO: clean inner_decl
+                // up somehow. need to know some types ahead but there has to be
+                // a cleaner way
+                assert!(inner_decl.is_none());
+                let inner_decl = abi.types.get(&inner_type.type_id).unwrap();
+                // We are simulating Vec<T> with [T; N], so we need a special case here
+                let inner_inner_decl: Option<TypeDeclaration> =
+                    if inner_decl.type_field.starts_with("enum") {
+                        let inner_inner_type = &inner_type.type_arguments.as_ref().unwrap()[0];
+                        Some(abi.types.get(&inner_inner_type.type_id).unwrap().clone())
+                    } else {
+                        None
+                    };
+                println!("ARRAY:\nINNER_DECL:\n{inner_decl:#?}\nINNER_INNER_DECL:\n{inner_inner_decl:#?}");
+                let elems: Vec<String> = elems
+                    .into_iter()
+                    .map(|tok| {
+                        pretty_print_inner(
+                            abi,
+                            indent,
+                            inner_decl.clone(),
+                            inner_inner_decl.clone(),
+                            tok,
+                        )
+                    })
+                    .collect::<Vec<String>>();
+                "[".to_string() + &elems.join(", ") + "]"
+            }
+            Token::Enum(enum_selector) => {
+                let (n, y, z) = *enum_selector;
+
+                // e.g. Transaction::Mint(Mint) => Mint
+                let component_type = decl.components.as_ref().unwrap()[n as usize].clone();
+
+                // Sometimes we have an inner_decl, sometimes we need to look it up.
+                // E.g. if we start with [Option<Transaction>; N], then we'll get to
+                // Option<Transaction> with:
+                // decl            , inner_decl      , inner_inner_decl
+                // enum Option     , enum Transaction, enum Mint
+                // enum Transaction, struct Mint     , None
+                // struct Mint     , None            , None
+                // If we start with plain Transaction
+                // enum Transaction, None (this!)    , None
+                let inner_decl =
+                    inner_decl.or_else(|| abi.types.get(&component_type.type_id).cloned());
+
+                let (variant, inner_inner_decl) = {
+                    let component_type = decl.components.as_ref().unwrap()[n as usize].clone();
+                    let variant = if decl.type_field == "enum Option" {
+                        component_type.name.clone()
+                    } else {
+                        let type_name = decl.type_field.strip_prefix("enum ").unwrap().to_string();
+                        type_name + "::" + &component_type.name
+                    };
+                    // println!("{variant} {type_id}", type_id = r#type.type_id);
+                    let inner_inner_decl = {
+                        if let Token::Enum(enum_selector) = y.clone() {
+                            let (variant_number, _, _) = *enum_selector;
+                            let target_type_id =
+                                inner_decl.as_ref().unwrap().components.as_ref().unwrap()
+                                    [variant_number as usize]
+                                    .type_id;
+                            abi.types.get(&target_type_id).cloned()
+                        } else {
+                            None
+                        }
+                    };
+                    (variant, inner_inner_decl)
+                };
+
+                // println!("ENUM variant={variant}:\nDECL:\n{decl:#?}\nINNER_DECL:\n{inner_decl:#?}\nINNER_INNER_DECL:\n{inner_inner_decl:#?}\n{n}\n{y}\n{z:#?}");
+
+                variant
+                    + "("
+                    + &pretty_print_inner(abi, indent, inner_decl.unwrap(), inner_inner_decl, y)
+                    + ")"
+            }
             _ => unimplemented!("pretty_print {tok:#?}"),
         }
     }
     let decl = abi.type_declaration(type_id);
-    pretty_print_inner(abi, 0, decl, tok)
+    pretty_print_inner(abi, 0, decl, None, tok)
 }
 
 // WITH
@@ -378,8 +470,7 @@ fn load_any(pool: &Pool<Postgres>, abi: &crate::ABI, struct_name: String, type_i
     let query = sqlx::query(&query_string);
 
     // TODO: handle empty result
-    let row: sqlx::postgres::PgRow =
-        futures::executor::block_on(query.fetch_one(pool)).unwrap();
+    let row: sqlx::postgres::PgRow = futures::executor::block_on(query.fetch_one(pool)).unwrap();
 
     println!("RESULT ROW IS_EMPTY={}", row.is_empty());
 
@@ -420,14 +511,14 @@ fn load_any(pool: &Pool<Postgres>, abi: &crate::ABI, struct_name: String, type_i
         params: &mut VecDeque<ParamType>,
     ) -> Token {
         // println!("CONVERT: {index} {decl:#?} {params:#?}");
-        if is_struct(&decl) && !is_u256(&decl) {
-            let mut struct_tokens = vec![];
+        if decl.is_struct() && !decl.is_u256() {
+            let mut target_value = vec![];
             for field in decl.components.unwrap().iter() {
                 let field_decl = abi.type_declaration(field.type_id);
                 let field_tokens = convert(abi, index, row, field_decl, params);
-                struct_tokens.push(field_tokens)
+                target_value.push(field_tokens)
             }
-            Token::Struct(struct_tokens)
+            Token::Struct(target_value)
         } else {
             let field_token = match params.pop_front().unwrap() {
                 ParamType::U32 => Token::U32(row.get::<i32, usize>(*index) as u32),
@@ -481,8 +572,8 @@ fn load_any_rec(
 
     for field in decl.components.as_ref().unwrap().iter() {
         let field_decl = abi.type_declaration(field.type_id);
-        if is_struct(&field_decl) && !is_u256(&field_decl) {
-            println!("FOO");
+        if field_decl.is_struct() && !field_decl.is_u256() {
+            // println!("FOO");
             let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
             let i = context
                 .entry(field_struct_name.to_string())
@@ -520,8 +611,8 @@ fn load_any_rec(
     (selects, joins, types)
 }
 
-fn save_any(abi: &crate::ABI, type_id: usize, struct_tokens: Token) -> String {
-    let (_, stmts) = save_any_rec(abi, HashSet::new(), type_id, struct_tokens);
+fn save_any(abi: &crate::ABI, type_id: usize, target_value: Token) -> String {
+    let (_, stmts) = save_any_rec(abi, HashSet::new(), type_id, target_value);
     let stmts = stmts.join(", ");
     format!("WITH {stmts} (SELECT 1 AS placeholder_column_name)")
 }
@@ -530,51 +621,93 @@ fn save_any_rec(
     abi: &crate::ABI,
     mut unique_stmts: HashSet<String>,
     type_id: usize,
-    struct_tokens: Token,
+    target_value: Token,
 ) -> (HashSet<String>, Vec<String>) {
-    let decl = abi.type_declaration(type_id);
-    println!(">> SAVE_ANY {type_id} {struct_tokens:#?}");
-    let toks = expect_struct_tokens(&struct_tokens);
+    let target_decl = abi.type_declaration(type_id);
+    println!(
+        ">> SAVE_ANY type_id={type_id} type={} tokens={target_value:#?}",
+        target_decl.type_field
+    );
+    let toks = if target_decl.is_struct() {
+        target_value.as_struct().clone()
+    } else {
+        vec![target_value.as_enum().1]
+    };
     let mut stmts = vec![];
-    let struct_name = decl.type_field.strip_prefix("struct ").unwrap();
-    let columns: Vec<String> = decl
+    let struct_name = target_decl.struct_or_enum_name().unwrap();
+    let mut columns: Vec<String> = target_decl
         .components
         .as_ref()
         .unwrap()
         .iter()
         .map(|field| {
             let decl = abi.type_declaration(field.type_id);
-            if is_struct(&decl) && !is_u256(&decl) {
+            if decl.is_struct() || decl.is_enum() && !decl.is_u256() {
                 format!("\"{}Id\"", field.name)
             } else {
-                format!("\"{}\"", field.name)
+                format!("{}", field.name)
             }
         })
         .collect();
-    if has_nested_struct(abi, &decl) {
+    if has_nested_struct(abi, &target_decl) || has_nested_enum(abi, &target_decl) {
         let mut selects: Vec<String> = vec![];
         let mut sources: Vec<String> = vec![];
         let mut wheres = vec![];
-        for (i, field) in decl.components.as_ref().unwrap().iter().enumerate() {
+        let zzz = if target_decl.is_enum() {
+            let n = target_value.as_enum().0;
+            let k = target_decl.components.as_ref().unwrap()[n as usize].clone();
+            let v = vec![k];
+            v
+        } else {
+            target_decl.components.as_ref().unwrap().clone()
+        };
+        for (i, field) in zzz.iter().enumerate() {
             let field_decl = abi.type_declaration(field.type_id);
-            let field_name = if is_struct(&field_decl) {
+            println!("DECL i={} type={}", i, field_decl.type_field);
+            let field_name = if field_decl.is_struct() || field_decl.is_enum() {
                 format!("{}Id", field.name)
             } else {
                 field.name.clone()
             };
-            if is_u256(&field_decl) {
+
+            //
+            // U256
+            //
+            if field_decl.is_u256() {
                 selects.push(tok_to_string(&toks[i]));
-            } else if is_struct(&field_decl) {
-                let field_struct_name = field_decl.type_field.strip_prefix("struct ").unwrap();
-                let (nested_unique, nested_stmts) =
-                    save_any_rec(abi, unique_stmts.clone(), field_decl.type_id, toks[i].clone());
+            //
+            // ENUM
+            //
+            } else if field_decl.is_enum() {
+                let field_struct_name = field_decl.struct_or_enum_name().unwrap();
+
+                let (nested_unique, nested_stmts) = save_any_rec(
+                    abi,
+                    unique_stmts.clone(),
+                    field_decl.type_id,
+                    if field_decl.is_struct() {
+                        toks[i].clone()
+                    } else {
+                        toks[0].clone()
+                    },
+                );
                 stmts.push(nested_stmts);
                 unique_stmts.extend(nested_unique.into_iter());
 
-                let field_struct_hash = hash_tokens(&expect_struct_tokens(&toks[i]));
-                selects.push(format!(
-                    "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
-                ));
+                let field_struct_hash = hash_tokens(&vec![toks[i].as_enum().1]);
+
+                for variant in target_decl.components.as_ref().unwrap() {
+                    println!("VARIANT:\n{variant:#?}");
+                    if target_decl.is_enum() && variant.name != field.name {
+                        // NULLs for the values of other variants
+                        selects.push(format!("NULL as {}Id", variant.name));
+                    } else {
+                        // Id for the value of active variant
+                        selects.push(format!(
+                            "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                        ));
+                    }
+                }
 
                 let source = format!("{field_struct_name}_id_{field_struct_hash}");
 
@@ -585,6 +718,57 @@ fn save_any_rec(
                 wheres.push(format!(
                     "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
                 ));
+            //
+            // STRUCT
+            //
+            } else if field_decl.is_struct() {
+                let field_struct_name = field_decl.struct_or_enum_name().unwrap();
+                let (nested_unique, nested_stmts) = save_any_rec(
+                    abi,
+                    unique_stmts.clone(),
+                    field_decl.type_id,
+                    if field_decl.is_struct() {
+                        toks[i].clone()
+                    } else {
+                        toks[0].clone()
+                    },
+                );
+                stmts.push(nested_stmts);
+                unique_stmts.extend(nested_unique.into_iter());
+
+                let field_struct_hash = hash_tokens(&toks[i].as_struct());
+
+                if target_decl.is_struct() {
+                    selects.push(format!(
+                        "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                    ));
+                } else if target_decl.is_enum() {
+                    for variant in target_decl.components.as_ref().unwrap() {
+                        println!("VARIANT 2:\n{variant:#?}");
+                        if target_decl.is_enum() && variant.name != field.name {
+                            // NULLs for the values of other variants
+                            selects.push(format!("NULL as {}Id", variant.name));
+                        } else {
+                            // Id for the value of active variant
+                            selects.push(format!(
+                                "{field_struct_name}_id_{field_struct_hash}.id AS {field_name}"
+                            ));
+                        }
+                    }
+                }
+
+                let source = format!("{field_struct_name}_id_{field_struct_hash}");
+
+                if !sources.contains(&source) {
+                    sources.push(format!("{field_struct_name}_id_{field_struct_hash}"));
+                }
+
+                wheres.push(format!(
+                    "\"{field_name}\" = (SELECT id FROM {field_struct_name}_id_{field_struct_hash})"
+                ));
+            //
+            // OTHER
+            //
             } else {
                 let tok = toks[i].clone();
                 selects.push(tok_to_string(&tok));
@@ -606,10 +790,25 @@ fn save_any_rec(
             stmts.push(vec![stmt]);
         }
     } else {
-        let values: Vec<String> = toks.iter().map(tok_to_string).collect();
         let mut where_clause = vec![];
-        for (i, v) in values.iter().enumerate() {
-            where_clause.push(format!("{c} = {v}", c = columns[i]));
+        let mut values: Vec<String> = vec![];
+        for (i, t) in toks.iter().enumerate() {
+            let col = columns[i].clone();
+
+            if t.is_enum() {
+                let (n, inner, _) = t.as_enum();
+                where_clause.push(format!("\"{}Variant\" = {}", col, n));
+                where_clause.push(format!("{}Id = {}", col, 9876));
+
+                columns[i] = format!("{col}Id");
+                columns.insert(i, format!("\"{col}Variant\""));
+
+                values.push("3".to_string());
+                values.push(n.to_string());
+            } else {
+                where_clause.push(format!("{} = {}", col, tok_to_string(t)));
+                values.push(tok_to_string(t));
+            }
         }
         let where_clause = where_clause.join(" AND ");
 
@@ -628,8 +827,39 @@ fn save_any_rec(
     (unique_stmts, stmts.into_iter().flatten().collect())
 }
 
+trait TokenExt {
+    fn as_struct(&self) -> &Vec<Token>;
+    fn as_enum(&self) -> (u64, Token, EnumVariants);
+    fn is_enum(&self) -> bool;
+}
+
+impl TokenExt for Token {
+    fn as_struct(&self) -> &Vec<Token> {
+        match self {
+            Token::Struct(toks) => toks,
+            _ => panic!("Expected Token::Struct argument but got {self:#?}"),
+        }
+    }
+
+    fn as_enum(&self) -> (u64, Token, EnumVariants) {
+        match self {
+            Token::Enum(x) => x.deref().to_owned(),
+            _ => panic!("Expected Token::Enum argument but got {self:#?}"),
+        }
+    }
+
+    fn is_enum(&self) -> bool {
+        match self {
+            Token::Enum(_) => true,
+            _ => false,
+        }
+    }
+}
+
 fn tok_to_string(tok: &Token) -> String {
     match tok {
+        Token::U8(x) => format!("{x}"),
+        Token::U16(x) => format!("{x}"),
         Token::U32(x) => format!("{x}"),
         Token::U64(x) => format!("{x}"),
         Token::Bool(b) => format!("{b}"),
@@ -638,7 +868,24 @@ fn tok_to_string(tok: &Token) -> String {
             let x = Into::<[u8; 32]>::into(*value);
             format!("\'{}\'", hex::encode(x))
         }
+        // Token::Array(elems) => {
+        //     format!(
+        //         "[{}]",
+        //         elems
+        //             .iter()
+        //             .map(tok_to_string)
+        //             .collect::<Vec<String>>()
+        //             .join(", ")
+        //     )
+        // }
+        // Token::Enum(enum_selector) => {
+        //     let (_, tok, _) = *enum_selector.to_owned();
+        //     format!("ZZZ({})", tok_to_string(&tok))
+        // }
+        // Token::Struct(fields) => "STRUCT".to_string(),
+        // Token::Unit => "()".to_string(),
         _ => unimplemented!("{tok:?}"),
+        // _ => "ZZZ".to_string(),
     }
 }
 
@@ -651,36 +898,52 @@ fn hash_tokens(tokens: &Vec<Token>) -> u64 {
     hasher.finish()
 }
 
-fn expect_struct_tokens(struct_token: &Token) -> &Vec<Token> {
-    if let Token::Struct(toks) = struct_token {
-        toks
-    } else {
-        panic!("Expected Token::Struct argument but got {struct_token:#?}");
+pub trait TypeDeclarationExt {
+    fn struct_or_enum_name(&self) -> Option<String>;
+    fn decl_fields(&self, abi: &crate::ABI) -> Vec<TypeDeclaration>;
+    fn is_u256(&self) -> bool;
+    fn is_enum(&self) -> bool;
+    fn is_struct(&self) -> bool;
+}
+
+impl TypeDeclarationExt for TypeDeclaration {
+    fn struct_or_enum_name(&self) -> Option<String> {
+        self.type_field
+            .strip_prefix("struct ")
+            .or(self.type_field.strip_prefix("enum "))
+            .map(std::string::ToString::to_string)
     }
-}
 
-fn decl_fields(abi: &crate::ABI, decl: &TypeDeclaration) -> Vec<TypeDeclaration> {
-    let mut result = vec![];
-    for field in decl.components.as_ref().unwrap() {
-        let field_decl = abi.type_declaration(field.type_id);
-        result.push(field_decl)
+    fn decl_fields(&self, abi: &crate::ABI) -> Vec<TypeDeclaration> {
+        let mut result = vec![];
+        for field in self.components.as_ref().unwrap() {
+            let field_decl = abi.type_declaration(field.type_id);
+            result.push(field_decl)
+        }
+        result
     }
-    result
-}
 
-fn is_struct(decl: &TypeDeclaration) -> bool {
-    decl.type_field.starts_with("struct")
-}
+    fn is_struct(&self) -> bool {
+        self.type_field.starts_with("struct")
+    }
 
-fn is_u256(x: &TypeDeclaration) -> bool {
-    x.type_field.starts_with("struct U256")
+    fn is_enum(&self) -> bool {
+        self.type_field.starts_with("enum")
+    }
+
+    fn is_u256(&self) -> bool {
+        self.type_field.starts_with("struct U256")
+    }
 }
 
 fn has_nested_struct(abi: &crate::ABI, decl: &TypeDeclaration) -> bool {
-    for field_decl in decl_fields(abi, decl) {
-        if is_struct(&field_decl) {
-            return true;
-        }
-    }
-    false
+    decl.decl_fields(abi)
+        .iter()
+        .any(TypeDeclarationExt::is_struct)
+}
+
+fn has_nested_enum(abi: &crate::ABI, decl: &TypeDeclaration) -> bool {
+    decl.decl_fields(abi)
+        .iter()
+        .any(TypeDeclarationExt::is_enum)
 }

@@ -7,55 +7,75 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model MyComplexStruct {
-  id        Int           @id
-  one       MyStruct      @relation(fields: [oneId], references: [id])
-  oneId     Int
-  one_one   MyStruct      @relation(fields: [one_oneId], references: [id])
-  one_oneId Int
-  two       MyOtherStruct @relation(fields: [twoId], references: [id])
-  twoId     Int
-  three     Int
-  four      String
-  five      Boolean
-  six       String
+model AssetId {
+  id    Int    @id
+  value String
+  Mint  Mint[]
 }
 
-model MyOtherStruct {
-  id              Int               @id
-  value           Int
-  MyComplexStruct MyComplexStruct[]
+model ContractId {
+  id            Int             @id
+  value         String
+  InputContract InputContract[]
 }
 
-model MyStruct {
-  id              Int               @id
-  one             Int
-  two             Int
-  MyComplexStruct MyComplexStruct[]
-  MyComplexStruct MyComplexStruct[]
-}
-
-model P {
+model Create {
   id Int @id
-  p  Int
-  Q  Q[]
-  Q  Q[]
 }
 
-model Q {
-  id    Int @id
-  p_1   P   @relation(fields: [p_1Id], references: [id])
-  p_1Id Int
-  p_2   P   @relation(fields: [p_2Id], references: [id])
-  p_2Id Int
-  R     R[]
-  R     R[]
+model FuelBlock {
+  id Int @id
 }
 
-model R {
-  id    Int @id
-  q_1   Q   @relation(fields: [q_1Id], references: [id])
-  q_1Id Int
-  q_2   Q   @relation(fields: [q_2Id], references: [id])
-  q_2Id Int
+model InputContract {
+  id            Int        @id
+  utxo_id       UtxoId     @relation(fields: [utxo_idId], references: [id])
+  utxo_idId     Int
+  balance_root  String
+  state_root    String
+  tx_pointer    TxPointer  @relation(fields: [tx_pointerId], references: [id])
+  tx_pointerId  Int
+  contract_id   ContractId @relation(fields: [contract_idId], references: [id])
+  contract_idId Int
+  Mint          Mint[]
+}
+
+model Mint {
+  id                Int            @id
+  tx_pointer        TxPointer      @relation(fields: [tx_pointerId], references: [id])
+  tx_pointerId      Int
+  input_contract    InputContract  @relation(fields: [input_contractId], references: [id])
+  input_contractId  Int
+  output_contract   OutputContract @relation(fields: [output_contractId], references: [id])
+  output_contractId Int
+  mint_amount       Int
+  mint_asset_id     AssetId        @relation(fields: [mint_asset_idId], references: [id])
+  mint_asset_idId   Int
+}
+
+model OutputContract {
+  id           Int    @id
+  input_index  Int
+  balance_root String
+  state_root   String
+  Mint         Mint[]
+}
+
+model Script {
+  id Int @id
+}
+
+model TxPointer {
+  id            Int             @id
+  block_height  Int
+  tx_index      Int
+  InputContract InputContract[]
+  Mint          Mint[]
+}
+
+model UtxoId {
+  id            Int             @id
+  tx_id         String
+  output_index  Int
+  InputContract InputContract[]
 }

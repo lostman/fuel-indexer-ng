@@ -1,4 +1,5 @@
 use anyhow::Context;
+use fuels::core::traits::Tokenizable;
 use std::collections::HashMap;
 use std::{fs::File, io::Read};
 
@@ -10,9 +11,14 @@ use fuel_vm::{
     storage::MemoryStorage,
 };
 
+use prost::Message;
+use types::TxExtra;
+
 mod abi;
+mod blocks;
 mod ecal;
 mod prisma;
+mod types;
 
 use crate::abi::{print_abi, ABI};
 use crate::ecal::MyEcal;
@@ -68,15 +74,19 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 
     print_abi(&abi);
 
-    let prisma_schema = crate::prisma::schema_from_abi(&abi.types);
-    std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
+    // TODO: reenable
+    // let prisma_schema = crate::prisma::schema_from_abi(&abi.types);
+    // std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
-    let mut db_schema = crate::abi::SchemaConstructor::new();
+    let mut db_schema = crate::abi::SchemaConstructor::new(abi.clone());
     db_schema.process_program_abi(&abi);
     for stmt in db_schema.statements() {
         println!("{};", stmt);
-        let result = sqlx::query(&format!("{stmt};")).execute(&pool).await.unwrap();
+        let result = sqlx::query(&format!("{stmt};"))
+            .execute(&pool)
+            .await
+            .unwrap();
         println!("{result:#?}");
     }
 
@@ -89,12 +99,29 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 
 use sqlx::{Pool, Postgres};
 
+async fn foo(pool: Pool<Postgres>) {
+    let bi = blocks::BlocksIter::new(1).unwrap();
+    for b in bi {
+        println!("{:#?}", b);
+
+        let data = fuels::core::codec::ABIEncoder::encode(&[b.into_token()])
+            .unwrap()
+            .resolve(0);
+
+        run_indexer_script(pool.clone(), "block-indexer", data).await;
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // let conn_url =
     //     std::env::var("DATABASE_URL").expect("Env var DATABASE_URL is required for this example.");
     let conn_url = "postgresql://postgres:postgres@localhost";
     let pool: Pool<Postgres> = sqlx::PgPool::connect(&conn_url).await.unwrap();
+
+    foo(pool.clone()).await;
+
+    panic!("");
 
     let indexers = HashMap::from([
         ("struct MyStruct", "mystruct-indexer"),
