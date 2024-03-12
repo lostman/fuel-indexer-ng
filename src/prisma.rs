@@ -80,7 +80,7 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
                         f.optional();
                         model.push_field(f);
                     },
-                    "[_; 30]" => {
+                    "[_; 7]" => {
                         // TODO
                         continue;
                     }

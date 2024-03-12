@@ -47,10 +47,10 @@ pub struct Header {
 
 pub struct FuelBlock {
     // block_id: b256,
-    // header: Header,
-    // transactions: [Option<Transaction>; 30],
+    header: Header,
+    transactions: [Option<Transaction>; 7],
     // temporary, for testing
-    transaction: Transaction,
+    // transaction: Transaction,
 }
 
 

@@ -319,7 +319,6 @@ impl SchemaConstructor {
             ParamType::Tuple(elems) => {
                 let mut columns = vec![];
                 for (i, elem) in elems.iter().enumerate() {
-                    let name = format!("{name}_{}", i);
                     let column = self.process_param_type(type_application, None, elem.clone());
                     columns.push(column);
                 }

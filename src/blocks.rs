@@ -81,21 +81,20 @@ impl Iterator for BlocksIter {
             //     .map(|(tx, tx_extra)| (tx, tx_extra).into())
             //     .collect(),
 
-            // TODO: reenable
-            // let header = block_indexer::Header {
-            //     block_id: Bits256::from(AssetId::new(block.id.try_into().unwrap())),
-            //     height: block.header.height,
-            //     da_height: block.header.da_height,
-            //     message_receipt_count: block.header.message_receipt_count,
-            //     transactions_count: block.header.transactions_count,
-            //     message_receipt_root: Bits256::from(AssetId::new(
-            //         block.header.message_receipt_root.into(),
-            //     )),
-            //     prev_root: Bits256::from(AssetId::new(block.header.prev_root.into())),
-            //     transactions_root: Bits256::from(AssetId::new(
-            //         block.header.transactions_root.into(),
-            //     )),
-            // };
+            let header = block_indexer::Header {
+                block_id: Bits256::from(AssetId::new(block.id.try_into().unwrap())),
+                height: block.header.height,
+                da_height: block.header.da_height,
+                message_receipt_count: block.header.message_receipt_count,
+                transactions_count: block.header.transactions_count,
+                message_receipt_root: Bits256::from(AssetId::new(
+                    block.header.message_receipt_root.into(),
+                )),
+                prev_root: Bits256::from(AssetId::new(block.header.prev_root.into())),
+                transactions_root: Bits256::from(AssetId::new(
+                    block.header.transactions_root.into(),
+                )),
+            };
 
             let transactions: Vec<block_indexer::Transaction> = tx_data
                 .iter()
@@ -112,12 +111,14 @@ impl Iterator for BlocksIter {
                 .map(|x| Some(x))
                 .collect::<Vec<Option<block_indexer::Transaction>>>();
 
-            transactions.extend(std::iter::repeat(None).take(30 - transactions.len()));
+            // TODO: 7 is a small value. This needs to be configurable. Or when
+            // Vec lands it won't be a problem.
+            transactions.extend(std::iter::repeat(None).take(7 - transactions.len()));
 
             let fb = block_indexer::FuelBlock {
-                transaction: transactions[0].as_ref().unwrap().clone(),
-                // transactions: transactions.try_into().unwrap(),
-                
+                // transaction: transactions[0].as_ref().unwrap().clone(),
+                header,
+                transactions: transactions.try_into().unwrap(),
             };
 
             let b = block.header.height;
@@ -170,8 +171,6 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::blocks::block_index
 }
 
 use fuels::tx::field::ScriptGasLimit;
-
-use self::block_indexer::abigen_bindings::block_indexer_mod;
 
 struct ScriptWithReceipts {
     script: fuel_core_types::fuel_tx::Script, // tx_data: Vec<Receipt>
