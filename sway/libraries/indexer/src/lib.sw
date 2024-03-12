@@ -61,10 +61,10 @@ pub enum Transaction {
 }
 
 pub struct Script {
+    // script_bytes: Vec<u8>,
+    // script_data: Vec<u8>,
     script_gas_limit: u64,
-}
-//     r#script: Vec<u8>,
-//     script_data: Vec<u8>,
+    receipts: [Option<receipt::Receipt>; 7],
 // //     pub(crate) policies: Policies,
 // //     pub(crate) inputs: Vec<Input>,
 // //     pub(crate) outputs: Vec<Output>,
@@ -74,8 +74,8 @@ pub struct Script {
 // //     #[derivative(PartialEq = "ignore", Hash = "ignore")]
 // //     #[canonical(skip)]
 // //     pub(crate) metadata: Option<ScriptMetadata>,
-//     receipts: Vec<receipt::Receipt>
-// }
+
+}
 
 
 pub struct Create {
@@ -131,26 +131,23 @@ pub struct OutputContract {
 }
 
 pub struct Mint {
-    /// The location of the transaction in the block.
-    tx_pointer: TxPointer,
-    /// The amount of funds minted.
-    mint_amount: u64
-}
 
 //     /// The location of the transaction in the block.
-//     tx_pointer: TxPointer,
+    tx_pointer: TxPointer,
 //     /// The `Input::Contract` that assets are minted to.
-//     input_contract: InputContract,
+    input_contract: InputContract,
 //     /// The `Output::Contract` that assets are being minted to.
-//     output_contract: OutputContract,
+    output_contract: OutputContract,
 //     /// The amount of funds minted.
-//     mint_amount: u64,
+    mint_amount: u64,
 //     /// The asset IDs corresponding to the minted amount.
-//     mint_asset_id: AssetId,
+    mint_asset_id: AssetId,
 //     // #[cfg_attr(feature = "serde", serde(skip))]
 //     // #[derivative(PartialEq = "ignore", Hash = "ignore")]
 //     // #[canonical(skip)]
 //     // pub(crate) metadata: Option<MintMetadata>,
+}
+
 // }
 
 // pub prev_id: ::prost::alloc::vec::Vec<u8>,

@@ -318,7 +318,7 @@ impl SchemaConstructor {
             }
             ParamType::Tuple(elems) => {
                 let mut columns = vec![];
-                for (i, elem) in elems.iter().enumerate() {
+                for elem in elems.iter() {
                     let column = self.process_param_type(type_application, None, elem.clone());
                     columns.push(column);
                 }
@@ -326,8 +326,8 @@ impl SchemaConstructor {
             }
             ParamType::String => Self::one_column(name, sql::DataType::String(None)),
             ParamType::Bytes => Self::one_column(name, sql::DataType::Bytea),
-            ParamType::Vector(elem_type) => Self::one_column(name, sql::DataType::Bytea),
-            ParamType::Enum { variants, generics } => {
+            ParamType::Vector(_) => Self::one_column(name, sql::DataType::Bytea),
+            ParamType::Enum { .. } => {
                 let type_declaration = self.abi.types.get(&type_application.type_id).unwrap();
                 if type_declaration.type_field == "enum Option" {
                     let x = &type_application.type_arguments.as_ref().unwrap()[0];
@@ -369,10 +369,6 @@ impl SchemaConstructor {
                 let inner_type = decl.components.as_ref().unwrap()[0].clone();
                 let inner_decl = self.abi.types.get(&inner_type.type_id).unwrap();
                 if inner_decl.type_field == "enum Option" {
-                    let inner_inner_type = inner_type.type_arguments.as_ref().unwrap()[0].clone();
-                    let inner_inner_decl = self.abi.types.get(&inner_inner_type.type_id).unwrap();
-                    // panic!("{inner_inner_decl:#?}");
-
                     let table_name = sql::ObjectName(vec![sql::Ident::new(format!(
                         "\"{}\"",
                         name.as_str().to_capitalized()

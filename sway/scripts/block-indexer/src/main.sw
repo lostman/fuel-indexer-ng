@@ -10,7 +10,6 @@ impl TypeName for indexer::FuelBlock {
     }
 }
 
-
 fn main(block: indexer::FuelBlock) {
     ecal_lib::save(block);
     ecal_lib::print_any(block);

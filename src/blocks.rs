@@ -1,11 +1,13 @@
-use crate::types::TxExtra;
 use fuels::{
     tx::{
-        field::{InputContract, MintAmount, MintAssetId, OutputContract, Script, TxPointer},
-        AssetId, Bytes32,
+        field::{InputContract, MintAmount, MintAssetId, OutputContract, TxPointer},
+        AssetId, Receipt, TxId,
     },
     types::Bits256,
 };
+
+use fuel_core_client::client::FuelClient;
+use fuel_core_types::{fuel_tx::Transaction, fuel_types::BlockHeight};
 
 mod block_indexer {
     fuels::macros::abigen!(Contract(
@@ -13,11 +15,6 @@ mod block_indexer {
         abi = "sway/scripts/block-indexer/out/debug/block-indexer-abi.json"
     ));
 }
-
-use fuel_core_client::client::FuelClient;
-use fuel_core_types::{
-    blockchain::primitives::BlockId, fuel_tx::Transaction, fuel_types::BlockHeight,
-};
 
 pub struct BlocksIter {
     height: BlockHeight,
@@ -61,7 +58,7 @@ impl Iterator for BlocksIter {
                     .expect(&format!("receipts for id={id}"));
                 tx_extra.push(TxExtra {
                     id: (*id).into(),
-                    receipts: vec![], // receipts.unwrap_or_default().to_vec(),
+                    receipts: receipts.unwrap_or_default().to_vec(),
                 });
             }
 
@@ -121,8 +118,6 @@ impl Iterator for BlocksIter {
                 transactions: transactions.try_into().unwrap(),
             };
 
-            let b = block.header.height;
-
             self.height = self.height.succ().expect("Max height reached.");
 
             return Some(fb);
@@ -149,6 +144,12 @@ impl Iterator for BlocksIter {
 // FuelTransaction::Create(v) => transaction::Kind::Create(v.into()),
 // FuelTransaction::Mint(v) => transaction::Kind::Mint(v.into()),
 
+/// Extra info used for constructing blocks
+pub struct TxExtra {
+    pub id: TxId,
+    pub receipts: Vec<Receipt>,
+}
+
 impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::blocks::block_indexer::Transaction {
     fn from((tx, tx_data): (&fuels::tx::FuelTransaction, TxExtra)) -> Self {
         // TODO
@@ -162,9 +163,11 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::blocks::block_index
             }
             fuels::tx::FuelTransaction::Script(script) => {
                 let s = ScriptWithReceipts {
-                    script: script.clone(), //, tx_data.receipts
-                };
-                block_indexer::Transaction::Script(s.into())
+                    script: script.clone(),
+                    receipts: tx_data.receipts,
+                }
+                .into();
+                block_indexer::Transaction::Script(s)
             }
         }
     }
@@ -172,14 +175,21 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::blocks::block_index
 
 use fuels::tx::field::ScriptGasLimit;
 
+use self::block_indexer::Call;
+
 struct ScriptWithReceipts {
-    script: fuel_core_types::fuel_tx::Script, // tx_data: Vec<Receipt>
+    script: fuel_core_types::fuel_tx::Script,
+    receipts: Vec<fuels::tx::Receipt>,
 }
 
 impl From<ScriptWithReceipts> for block_indexer::Script {
-    fn from(ScriptWithReceipts { script }: ScriptWithReceipts) -> Self {
+    fn from(data: ScriptWithReceipts) -> Self {
+        let rs: Vec<block_indexer::Receipt> =
+            data.receipts.iter().map(Into::into).collect::<Vec<_>>();
+        let rs: Vec<Option<block_indexer::Receipt>> = rs.into_iter().map(Some).collect::<Vec<_>>();
         Self {
-            script_gas_limit: script.script_gas_limit().to_owned(),
+            script_gas_limit: data.script.script_gas_limit().to_owned(),
+            receipts: rs.try_into().unwrap(),
         }
         //             script: value.script().to_vec(),
         //             script_data: value.script_data().to_vec(),
@@ -221,10 +231,10 @@ impl From<&fuel_core_types::fuel_tx::Mint> for block_indexer::Mint {
     fn from(mint: &fuel_core_types::fuel_tx::Mint) -> Self {
         block_indexer::Mint {
             tx_pointer: mint.tx_pointer().into(),
-            // input_contract: mint.input_contract().into(),
-            // output_contract: mint.output_contract().into(),
+            input_contract: mint.input_contract().into(),
+            output_contract: mint.output_contract().into(),
             mint_amount: *mint.mint_amount(),
-            // mint_asset_id: mint.mint_asset_id().to_owned(),
+            mint_asset_id: mint.mint_asset_id().to_owned(),
         }
     }
 }
@@ -238,42 +248,71 @@ impl From<&fuels::types::TxPointer> for block_indexer::TxPointer {
     }
 }
 
-// impl From<fuels::types::UtxoId> for block_indexer::UtxoId {
-//     fn from(utxoid: fuels::types::UtxoId) -> Self {
-//         Self {
-//             tx_id: Bits256::from(AssetId::new(utxoid.tx_id().to_owned().try_into().unwrap())),
-//             output_index: utxoid.output_index(),
-//         }
-//     }
-// }
+impl From<fuels::types::UtxoId> for block_indexer::UtxoId {
+    fn from(utxoid: fuels::types::UtxoId) -> Self {
+        Self {
+            tx_id: Bits256::from(AssetId::new(utxoid.tx_id().to_owned().try_into().unwrap())),
+            output_index: utxoid.output_index(),
+        }
+    }
+}
 
-// impl From<fuels::types::TxPointer> for block_indexer::TxPointer {
-//     fn from(tx_ptr: fuels::types::TxPointer) -> Self {
-//         Self {
-//             block_height: tx_ptr.block_height().into(),
-//             tx_index: tx_ptr.tx_index(),
-//         }
-//     }
-// }
+impl From<fuels::types::TxPointer> for block_indexer::TxPointer {
+    fn from(tx_ptr: fuels::types::TxPointer) -> Self {
+        Self {
+            block_height: tx_ptr.block_height().into(),
+            tx_index: tx_ptr.tx_index(),
+        }
+    }
+}
 
-// impl From<&fuel_core_types::fuel_tx::input::contract::Contract> for block_indexer::InputContract {
-//     fn from(contract: &fuel_core_types::fuel_tx::input::contract::Contract) -> Self {
-//         block_indexer::InputContract {
-//             utxo_id: contract.utxo_id.into(),
-//             balance_root: Bits256::from(AssetId::new(contract.balance_root.try_into().unwrap())),
-//             state_root: Bits256::from(AssetId::new(contract.state_root.try_into().unwrap())),
-//             tx_pointer: contract.tx_pointer.into(),
-//             contract_id: contract.contract_id,
-//         }
-//     }
-// }
+impl From<&fuel_core_types::fuel_tx::input::contract::Contract> for block_indexer::InputContract {
+    fn from(contract: &fuel_core_types::fuel_tx::input::contract::Contract) -> Self {
+        block_indexer::InputContract {
+            utxo_id: contract.utxo_id.into(),
+            balance_root: Bits256::from(AssetId::new(contract.balance_root.try_into().unwrap())),
+            state_root: Bits256::from(AssetId::new(contract.state_root.try_into().unwrap())),
+            tx_pointer: contract.tx_pointer.into(),
+            contract_id: contract.contract_id,
+        }
+    }
+}
 
-// impl From<&fuel_core_types::fuel_tx::output::contract::Contract> for block_indexer::OutputContract {
-//     fn from(contract: &fuel_core_types::fuel_tx::output::contract::Contract) -> Self {
-//         block_indexer::OutputContract {
-//             input_index: contract.input_index,
-//             balance_root: Bits256::from(AssetId::new(contract.balance_root.try_into().unwrap())),
-//             state_root: Bits256::from(AssetId::new(contract.state_root.try_into().unwrap())),
-//         }
-//     }
-// }
+impl From<&fuel_core_types::fuel_tx::output::contract::Contract> for block_indexer::OutputContract {
+    fn from(contract: &fuel_core_types::fuel_tx::output::contract::Contract) -> Self {
+        block_indexer::OutputContract {
+            input_index: contract.input_index,
+            balance_root: Bits256::from(AssetId::new(contract.balance_root.try_into().unwrap())),
+            state_root: Bits256::from(AssetId::new(contract.state_root.try_into().unwrap())),
+        }
+    }
+}
+
+impl From<&fuels::tx::Receipt> for block_indexer::Receipt {
+    fn from(receipt: &fuels::tx::Receipt) -> Self {
+        match receipt {
+            fuels::tx::Receipt::Call {
+                id,
+                to,
+                amount,
+                asset_id,
+                gas,
+                param1,
+                param2,
+                pc,
+                is,
+            } => Self::Call(Call {
+                id: id.to_owned(),
+                to: to.to_owned(),
+                amount: amount.to_owned(),
+                asset_id: asset_id.to_owned(),
+                gas: gas.to_owned(),
+                param_1: param1.to_owned(),
+                param_2: param2.to_owned(),
+                pc: pc.to_owned(),
+                is: is.to_owned(),
+            }),
+            _ => unimplemented!("{receipt:#?}"),
+        }
+    }
+}

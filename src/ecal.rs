@@ -393,7 +393,7 @@ fn pretty_print(abi: &crate::ABI, type_id: usize, tok: Token) -> String {
                 "[".to_string() + &elems.join(", ") + "]"
             }
             Token::Enum(enum_selector) => {
-                let (n, y, z) = *enum_selector;
+                let (n, y, _) = *enum_selector;
 
                 // e.g. Transaction::Mint(Mint) => Mint
                 let component_type = decl.components.as_ref().unwrap()[n as usize].clone();
@@ -641,28 +641,47 @@ impl SaveStmtBuilder {
             target_decl.type_field
         );
 
+        if target_value == Token::Unit {
+            return;
+        };
+
+        if target_decl.is_option() {
+            println!(">> SAVE_VALUE OPTION");
+            // Component [0] is None, component [1] is Some.
+            let elt_type = target_decl.components.as_ref().unwrap().clone()[1].clone();
+            let elt = target_value.as_enum().1;
+            println!(">> SAVING ELT type={elt_type:#?} elt={elt:#?}");
+            if !(target_decl.type_field == "()") {
+                self.save_value(elt_type.type_id, elt.clone());
+            }
+            return;
+        }
+
         if target_decl.is_array() {
+            println!(">> SAVE_VALUE ARRAY");
             let elt_type = target_decl.components.as_ref().unwrap().clone()[0].clone();
             for elt in target_value.as_array() {
                 println!(">> SAVING ELT type={elt_type:#?} elt={elt:#?}");
-                self.save_value(elt_type.type_id, elt.clone())
+                let type_id = elt_type.type_arguments.as_ref().unwrap()[0].type_id;
+                self.save_value(type_id, elt.clone())
             }
             return;
         }
 
         let toks = if target_decl.is_struct() {
-            let toks = target_value.as_struct().clone();
             println!("TOKS");
-            for t in toks.iter() {
+            for t in target_value.as_struct().clone().iter() {
                 println!("\t{t:?}");
             }
-            toks
+            target_value.as_struct().clone()
         } else if target_decl.is_enum() {
             println!("{target_decl:#?}");
             println!("TOKS1");
             vec![target_value.as_enum().1]
+        } else if target_decl.type_field == "()" {
+            vec![]
         } else {
-            panic!("")
+            panic!("{target_decl:#?}")
         };
 
         let mut columns: Vec<String> = target_decl
@@ -713,16 +732,38 @@ impl SaveStmtBuilder {
                 };
 
                 //
+                // UNIT
+                //
+                if field_decl.type_field == "()" {
+                    println!("UNIT SKIP")
+                //
                 // U256
                 //
-                if field_decl.is_u256() {
+                } else if field_decl.is_u256() {
                     selects.push(tok_to_string(&toks[i]));
+                //
+                // ARRAY
+                //
+                } else if field_decl.is_array() {
+                    let t = &toks[i];
+                    let arr_type = field_decl.components.as_ref().unwrap().clone()[0].clone();
+                    println!("ARR TYPE: {arr_type:#?}");
+                    let elt_type = arr_type.type_arguments.as_ref().unwrap()[0].clone();
+                    println!("ELT TYPE: {elt_type:#?}");
+                    for elt in t.as_array() {
+                        self.save_value(elt_type.type_id, elt.as_enum().1)
+                    }
+
+                    // Arrays have foreign keys pointing back.
+
+                    // TODO: For example Block { transactions:
+                    // [Option<Transaction>; 7]} After we've saved the elements
+                    // of the array, we need to get the ID's and add an entry to
+                    // the Trasnactions column
+                    continue;
                 //
                 // ENUM
                 //
-                } else if field_decl.is_array() {
-                    println!("ARRAY CONTINUE");
-                    continue;
                 } else if field_decl.is_enum() {
                     let field_struct_name = field_decl.struct_or_enum_name().unwrap();
 
@@ -923,7 +964,7 @@ fn tok_to_string(tok: &Token) -> String {
         //     format!("ZZZ({})", tok_to_string(&tok))
         // }
         // Token::Struct(fields) => "STRUCT".to_string(),
-        // Token::Unit => "()".to_string(),
+        Token::Unit => "()".to_string(),
         _ => unimplemented!("{tok:?}"),
         // _ => "ZZZ".to_string(),
     }

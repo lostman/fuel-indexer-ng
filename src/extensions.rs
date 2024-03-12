@@ -8,6 +8,7 @@ pub trait TypeDeclarationExt {
     fn is_enum(&self) -> bool;
     fn is_struct(&self) -> bool;
     fn is_array(&self) -> bool;
+    fn is_option(&self) -> bool;
     fn has_nested_struct(&self, abi: &crate::ABI) -> bool;
     fn has_nested_enum(&self, abi: &crate::ABI) -> bool;
     fn has_nested_array(&self, abi: &crate::ABI) -> bool;
@@ -45,8 +46,12 @@ impl TypeDeclarationExt for TypeDeclaration {
     fn is_array(&self) -> bool {
         self.components
             .as_ref()
-            .map(|cs| cs[0].name == "__array_element".to_string())
+            .map(|cs| !cs.is_empty() && cs[0].name == "__array_element".to_string())
             .unwrap_or(false)
+    }
+
+    fn is_option(&self) -> bool {
+        self.type_field.starts_with("enum Option")
     }
 
     fn has_nested_struct(&self, abi: &crate::ABI) -> bool {
@@ -95,7 +100,7 @@ impl TokenExt for Token {
     fn as_array(&self) -> &Vec<Token> {
         match self {
             Token::Array(xs) => xs,
-            _ => panic!("Expected Token::Struct but got {self:#?}"),
+            _ => panic!("Expected Token::Array but got {self:#?}"),
         }
     }
 

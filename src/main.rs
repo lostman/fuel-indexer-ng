@@ -11,14 +11,10 @@ use fuel_vm::{
     storage::MemoryStorage,
 };
 
-use prost::Message;
-use types::TxExtra;
-
 mod abi;
 mod blocks;
 mod ecal;
 mod prisma;
-mod types;
 mod extensions;
 
 use crate::abi::{print_abi, ABI};

@@ -32,18 +32,18 @@ pub struct ReturnData {
     digest: u64,
     pc: u64,
     is: u64,
-    data: Option<Vec<u8>>,
+    // data: Option<Vec<u8>>,
 }
 
-//     Panic {
-//         id: ContractId,
-//         reason: PanicInstruction,
-//         pc: Word,
-//         is: Word,
-//         #[derivative(PartialEq = "ignore", Hash = "ignore")]
-//         #[canonical(skip)]
-//         contract_id: Option<ContractId>,
-//     },
+pub struct Panic {
+    id: ContractId,
+    // reason: PanicInstruction,
+    pc: u64,
+    is: u64,
+    // #[derivative(PartialEq = "ignore", Hash = "ignore")]
+    // #[canonical(skip)]
+    contract_id: Option<ContractId>,
+}
 
 pub struct Revert {
     id: ContractId,
@@ -62,20 +62,20 @@ pub struct Log {
     is: u64,
 }
 
-//     LogData {
-//         id: ContractId,
-//         ra: Word,
-//         rb: Word,
-//         ptr: Word,
-//         len: Word,
-//         digest: Bytes32,
-//         pc: Word,
-//         is: Word,
-//         #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
-//         #[derivative(PartialEq = "ignore", Hash = "ignore")]
-//         #[canonical(skip)]
-//         data: Option<Vec<u8>>,
-//     },
+pub struct LogData {
+    id: ContractId,
+    ra: u64,
+    rb: u64,
+    ptr: u64,
+    len: u64,
+    digest: u256,
+    pc: u64,
+    is: u64,
+    // #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
+    // #[derivative(PartialEq = "ignore", Hash = "ignore")]
+    // #[canonical(skip)]
+    // data: Option<Vec<u8>>,
+}
 
 pub struct Transfer {
     id: ContractId,
@@ -95,23 +95,18 @@ pub struct TransferOut {
     is: u64,
 }
 
-//     ScriptResult {
-//         result: ScriptExecutionResult,
-//         gas_used: Word,
-//     },
-
-//     MessageOut {
-//         sender: Address,
-//         recipient: Address,
-//         amount: Word,
-//         nonce: Nonce,
-//         len: Word,
-//         digest: Bytes32,
-//         #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
-//         #[derivative(PartialEq = "ignore", Hash = "ignore")]
-//         #[canonical(skip)]
-//         data: Option<Vec<u8>>,
-//     },
+pub struct MessageOut {
+    sender: Address,
+    recipient: Address,
+    amount: u64,
+    // nonce: Nonce,
+    len: u64,
+    digest: u256,
+    // #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
+    // #[derivative(PartialEq = "ignore", Hash = "ignore")]
+    // #[canonical(skip)]
+    // data: Option<Vec<u8>>,
+}
 
 pub struct Mint {
     sub_id: u256,
