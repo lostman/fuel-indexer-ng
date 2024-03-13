@@ -6,31 +6,6 @@ use std::string::String;
 
 use ecal_lib::{Filter, TypeName};
 
-// pub struct Block {
-//     #[prost(bytes = "vec", tag = "1")]
-//     pub id: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(uint32, tag = "2")]
-//     pub height: u32,
-//     #[prost(uint64, tag = "3")]
-//     pub da_height: u64,
-//     #[prost(uint64, tag = "4")]
-//     pub msg_receipt_count: u64,
-//     #[prost(bytes = "vec", tag = "5")]
-//     pub tx_root: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(bytes = "vec", tag = "6")]
-//     pub msg_receipt_root: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(bytes = "vec", tag = "7")]
-//     pub prev_id: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(bytes = "vec", tag = "8")]
-//     pub prev_root: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(fixed64, tag = "9")]
-//     pub timestamp: u64,
-//     #[prost(bytes = "vec", tag = "10")]
-//     pub application_hash: ::prost::alloc::vec::Vec<u8>,
-//     #[prost(message, repeated, tag = "11")]
-//     pub transactions: ::prost::alloc::vec::Vec<Transaction>,
-// }
-
 
 pub struct Header {
     block_id: b256,
@@ -62,8 +37,8 @@ pub enum Transaction {
 
 pub struct Script {
     script_gas_limit: u64,
-    // script_bytes: Vec<u8>,
-    // script_data: Vec<u8>,
+    script_bytes: BYTES,
+    script_data: BYTES,
     policies: Policies,
     inputs: [Option<Input>; 7],
     outputs: [Option<Output>; 7],
@@ -91,15 +66,11 @@ pub struct Coin
     amount: u64,
     asset_id: AssetId,
     tx_pointer: TxPointer,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub witness_index: Specification::Witness,
+    witness_index: u8,
     maturity: u32,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate_gas_used: Specification::PredicateGasUsed,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate: Specification::Predicate,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate_data: Specification::PredicateData,
+    predicate_gas_used: u64,
+    r#predicate: BYTES,
+    predicate_data: BYTES,
 }
 
 pub struct Message
@@ -110,16 +81,11 @@ pub struct Message
     recipient: Address,
     amount: u64,
     nonce: u256,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub witness_index: Specification::Witness,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate_gas_used: Specification::PredicateGasUsed,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub data: Specification::Data,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate: Specification::Predicate,
-    // #[derivative(Debug(format_with = "fmt_as_field"))]
-    // pub predicate_data: Specification::PredicateData,
+    witness_index: u8,
+    predicate_gas_used: u64,
+    data: BYTES,
+    r#predicate: BYTES,
+    predicate_data: BYTES,
 }
 
 pub enum Output {
@@ -229,3 +195,6 @@ impl TypeName for Header {
         "struct Header"
     }
 }
+
+// TODO: Until Vec<u8> is available, simulate Vec<u8>
+type BYTES = [Option<u8>; 128];
