@@ -61,43 +61,118 @@ pub enum Transaction {
 }
 
 pub struct Script {
+    script_gas_limit: u64,
     // script_bytes: Vec<u8>,
     // script_data: Vec<u8>,
-    script_gas_limit: u64,
+    policies: Policies,
+    inputs: [Option<Input>; 7],
+    outputs: [Option<Output>; 7],
+    witnesses: [Option<Witness>; 7],
+    receipts_root: b256,
     receipts: [Option<receipt::Receipt>; 7],
-// //     pub(crate) policies: Policies,
-// //     pub(crate) inputs: Vec<Input>,
-// //     pub(crate) outputs: Vec<Output>,
-// //     pub(crate) witnesses: Vec<Witness>,
-//     receipts_root: b256,
-// //     #[cfg_attr(feature = "serde", serde(skip))]
-// //     #[derivative(PartialEq = "ignore", Hash = "ignore")]
-// //     #[canonical(skip)]
-// //     pub(crate) metadata: Option<ScriptMetadata>,
-
 }
 
+pub struct Policies {}
+
+pub enum Input {
+    CoinSigned: Coin,
+    CoinPredicate: Coin,
+    Contract: InputContract,
+    MessageCoinSigned: Message,
+    MessageCoinPredicate: Message,
+    MessageDataSigned: Message,
+    MessageDataPredicate: Message,
+}
+
+pub struct Coin
+{
+    utxo_id: UtxoId,
+    owner: Address,
+    amount: u64,
+    asset_id: AssetId,
+    tx_pointer: TxPointer,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub witness_index: Specification::Witness,
+    maturity: u32,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate_gas_used: Specification::PredicateGasUsed,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate: Specification::Predicate,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate_data: Specification::PredicateData,
+}
+
+pub struct Message
+{
+    /// The sender from the L1 chain.
+    sender: Address,
+    /// The receiver on the `Fuel` chain.
+    recipient: Address,
+    amount: u64,
+    nonce: u256,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub witness_index: Specification::Witness,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate_gas_used: Specification::PredicateGasUsed,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub data: Specification::Data,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate: Specification::Predicate,
+    // #[derivative(Debug(format_with = "fmt_as_field"))]
+    // pub predicate_data: Specification::PredicateData,
+}
+
+pub enum Output {
+    Coin: OutputCoin,
+    Contract: OutputContract,
+    Change: OutputChange,
+    Variable: OutputVariable,
+    ContractCreated: OutputContractCreated,
+}
+
+pub struct OutputCoin {
+    to: Address,
+    amount: u64,
+    asset_id: AssetId,
+}
+
+pub struct OutputChange {
+    to: Address,
+    amount: u64,
+    asset_id: AssetId,
+}
+
+pub struct OutputVariable {
+    to: Address,
+    amount: u64,
+    asset_id: AssetId,
+}
+
+pub struct OutputContractCreated {
+    contract_id: ContractId,
+    state_root: u256,
+}
+
+
+pub struct Witness {
+    // data: Vec<u8>,
+}
 
 pub struct Create {
     bytecode_length: u64,
     bytecode_witness_index: u8,
+    policies: Policies,
+    storage_slots: [Option<StorageSlot>; 7],
+    inputs: [Option<Input>; 7],
+    outputs: [Option<Output>; 7],
+    witnesses: [Option<Witness>; 7],
+    salt: u256,
 }
 
-// pub struct Create {
-//     pub(crate) bytecode_length: Word,
-//     pub(crate) bytecode_witness_index: u8,
-//     pub(crate) policies: Policies,
-//     pub(crate) storage_slots: Vec<StorageSlot>,
-//     pub(crate) inputs: Vec<Input>,
-//     pub(crate) outputs: Vec<Output>,
-//     pub(crate) witnesses: Vec<Witness>,
-//     pub(crate) salt: Salt,
-//     #[cfg_attr(feature = "serde", serde(skip))]
-//     #[derivative(PartialEq = "ignore", Hash = "ignore")]
-//     #[canonical(skip)]
-//     pub(crate) metadata: Option<CreateMetadata>,
-// }
-
+pub struct StorageSlot {
+    key: u256,
+    value: u256,
+}
 
 pub struct TxPointer {
     /// Block height
@@ -131,58 +206,17 @@ pub struct OutputContract {
 }
 
 pub struct Mint {
-
-//     /// The location of the transaction in the block.
+    /// The location of the transaction in the block.
     tx_pointer: TxPointer,
-//     /// The `Input::Contract` that assets are minted to.
+    /// The `Input::Contract` that assets are minted to.
     input_contract: InputContract,
-//     /// The `Output::Contract` that assets are being minted to.
+    /// The `Output::Contract` that assets are being minted to.
     output_contract: OutputContract,
-//     /// The amount of funds minted.
+    /// The amount of funds minted.
     mint_amount: u64,
-//     /// The asset IDs corresponding to the minted amount.
+    /// The asset IDs corresponding to the minted amount.
     mint_asset_id: AssetId,
-//     // #[cfg_attr(feature = "serde", serde(skip))]
-//     // #[derivative(PartialEq = "ignore", Hash = "ignore")]
-//     // #[canonical(skip)]
-//     // pub(crate) metadata: Option<MintMetadata>,
 }
-
-// }
-
-// pub prev_id: ::prost::alloc::vec::Vec<u8>,
-// #[prost(bytes = "vec", tag = "8")]
-// pub prev_root: ::prost::alloc::vec::Vec<u8>,
-// #[prost(fixed64, tag = "9")]
-// pub timestamp: u64,
-// #[prost(bytes = "vec", tag = "10")]
-// pub application_hash: ::prost::alloc::vec::Vec<u8>,
-// #[prost(message, repeated, tag = "11")]
-// pub transactions: ::prost::alloc::vec::Vec<Transaction>,
-
-
-// #[prost(bytes = "vec", tag = "1")]            X
-// pub id: ::prost::alloc::vec::Vec<u8>,         X
-// #[prost(uint32, tag = "2")]                   X
-// pub height: u32,                              X
-// #[prost(uint64, tag = "3")]                   X
-// pub da_height: u64,                           X
-// #[prost(uint64, tag = "4")]                   X
-// pub msg_receipt_count: u64,                   X
-// #[prost(bytes = "vec", tag = "5")]
-// pub tx_root: ::prost::alloc::vec::Vec<u8>,
-// #[prost(bytes = "vec", tag = "6")]
-// pub msg_receipt_root: ::prost::alloc::vec::Vec<u8>,
-// #[prost(bytes = "vec", tag = "7")]
-// pub prev_id: ::prost::alloc::vec::Vec<u8>,
-// #[prost(bytes = "vec", tag = "8")]
-// pub prev_root: ::prost::alloc::vec::Vec<u8>,
-// #[prost(fixed64, tag = "9")]
-// pub timestamp: u64,
-// #[prost(bytes = "vec", tag = "10")]
-// pub application_hash: ::prost::alloc::vec::Vec<u8>,
-// #[prost(message, repeated, tag = "11")]
-// pub transactions: ::prost::alloc::vec::Vec<Transaction>,
 
 impl TypeName for FuelBlock {
     fn type_name() -> str {
