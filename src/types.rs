@@ -56,62 +56,44 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::types::sway::Transa
         match tx {
             fuels::tx::FuelTransaction::Create(create) => sway::Transaction::Create(create.into()),
             fuels::tx::FuelTransaction::Mint(mint) => sway::Transaction::Mint(mint.into()),
-            fuels::tx::FuelTransaction::Script(script) => sway::Transaction::Script(
-                ScriptWithReceipts {
-                    script: script.clone(),
-                    receipts: tx_data.receipts,
-                }
-                .into(),
-            ),
-        }
-    }
-}
-
-struct ScriptWithReceipts {
-    script: fuel::Script,
-    receipts: Vec<fuels::tx::Receipt>,
-}
-
-impl From<ScriptWithReceipts> for sway::Script {
-    fn from(data: ScriptWithReceipts) -> Self {
-        let value = data.script;
-        Self {
-            script_gas_limit: value.script_gas_limit().to_owned(),
-            script_bytes: value.script().to_vec().vec_to_option_array(),
-            script_data: value.script_data().to_vec().vec_to_option_array(),
-            policies: value.policies().into(),
-            inputs: value
-                .inputs()
-                .iter()
-                .map(Into::into)
-                .collect::<Vec<_>>()
-                .vec_to_option_array(),
-            outputs: value
-                .outputs()
-                .iter()
-                .map(Into::into)
-                .collect::<Vec<_>>()
-                .vec_to_option_array(),
-            witnesses: value
-                .witnesses()
-                .iter()
-                .map(Into::into)
-                .collect::<Vec<_>>()
-                .vec_to_option_array(),
-            receipts_root: Bits256::from(AssetId::new(
-                value
-                    .receipts_root()
-                    .as_slice()
-                    .to_owned()
-                    .try_into()
-                    .unwrap(),
-            )),
-            receipts: data
-                .receipts
-                .iter()
-                .map(Into::into)
-                .collect::<Vec<_>>()
-                .vec_to_option_array(),
+            fuels::tx::FuelTransaction::Script(script) => sway::Transaction::Script(sway::Script {
+                script_gas_limit: script.script_gas_limit().to_owned(),
+                script_bytes: script.script().to_vec().vec_to_option_array(),
+                script_data: script.script_data().to_vec().vec_to_option_array(),
+                policies: script.policies().into(),
+                inputs: script
+                    .inputs()
+                    .iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .vec_to_option_array(),
+                outputs: script
+                    .outputs()
+                    .iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .vec_to_option_array(),
+                witnesses: script
+                    .witnesses()
+                    .iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .vec_to_option_array(),
+                receipts_root: Bits256::from(AssetId::new(
+                    script
+                        .receipts_root()
+                        .as_slice()
+                        .to_owned()
+                        .try_into()
+                        .unwrap(),
+                )),
+                receipts: tx_data
+                    .receipts
+                    .iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .vec_to_option_array(),
+            }),
         }
     }
 }

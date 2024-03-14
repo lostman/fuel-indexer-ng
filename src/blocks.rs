@@ -35,16 +35,6 @@ impl Iterator for BlocksIter {
             futures::executor::block_on(self.client.block_by_height(self.height.into()))
                 .expect("block_by_height")
         {
-            // let prev_id: BlockId = match self.height.pred() {
-            //     Some(h) => futures::executor::block_on(self.client.block_by_height(h.into()))
-            //         .expect("block_by_height")
-            //         .map(|b| b.id.into())
-            //         .unwrap_or_default(),
-            //     None => BlockId::default(),
-            // };
-
-            // TODO: receipts
-            // let mut receipts: Vec<sway::Receipt> = vec![];
             let mut tx_data: Vec<Transaction> = vec![];
             let mut tx_extra: Vec<crate::types::TxExtra> = vec![];
             for id in &block.transactions {
@@ -59,22 +49,6 @@ impl Iterator for BlocksIter {
                     receipts: receipts.unwrap_or_default().to_vec(),
                 });
             }
-
-            // id: block.id.as_slice().to_owned(),
-            // height: block.header.height,
-            // da_height: block.header.da_height,
-            // msg_receipt_count: block.header.message_receipt_count,
-            // tx_root: block.header.transactions_root.as_slice().to_owned(),
-            // msg_receipt_root: block.header.message_receipt_root.as_slice().to_owned(),
-            // prev_id: prev_id.as_slice().to_owned(),
-            // prev_root: block.header.prev_root.as_slice().to_owned(),
-            // timestamp: block.header.time.0,
-            // application_hash: block.header.application_hash.to_vec(),
-            // transactions: tx_data
-            //     .iter()
-            //     .zip(tx_extra)
-            //     .map(|(tx, tx_extra)| (tx, tx_extra).into())
-            //     .collect(),
 
             let header = crate::types::sway::Header {
                 block_id: Bits256::from(AssetId::new(block.id.try_into().unwrap())),
@@ -110,7 +84,7 @@ impl Iterator for BlocksIter {
             // Vec lands it won't be a problem.
             transactions.extend(std::iter::repeat(None).take(7 - transactions.len()));
 
-            let fb = crate::types::sway::FuelBlock {
+            let block = crate::types::sway::FuelBlock {
                 block_id: Bits256::from(AssetId::new(*block.id)),
                 height: block.header.height,
                 header,
@@ -119,7 +93,7 @@ impl Iterator for BlocksIter {
 
             self.height = self.height.succ().expect("Max height reached.");
 
-            return Some(fb);
+            return Some(block);
         } else {
             None
         }
