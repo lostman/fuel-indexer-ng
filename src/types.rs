@@ -14,9 +14,12 @@ use fuels::tx::field::{
 // Rust types to map from
 mod fuel {
     pub use fuel_core_types::fuel_tx::{
-        input::coin::CoinFull, input::contract::Contract as InputContract,
-        input::message::FullMessage, output::contract::Contract as OutputContract,
-        policies::Policies, Create, Input, Mint, Output, Receipt, Script, StorageSlot, Witness,
+        input::coin::CoinFull,
+        input::contract::Contract as InputContract,
+        input::message::FullMessage,
+        output::contract::Contract as OutputContract,
+        policies::{Policies, PolicyType},
+        Create, Input, Mint, Output, Receipt, Script, StorageSlot, Witness,
     };
 }
 
@@ -100,7 +103,13 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::types::sway::Transa
 
 impl From<&fuel::Policies> for sway::Policies {
     fn from(value: &fuel::Policies) -> Self {
-        Self {}
+        use strum::IntoEnumIterator;
+        Self {
+            values: fuel::PolicyType::iter()
+                .map(|policy_type| value.get(policy_type).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .vec_to_option_array(),
+        }
     }
 }
 
@@ -171,7 +180,36 @@ impl From<&fuel::FullMessage> for sway::Message {
 
 impl From<&fuel::Output> for sway::Output {
     fn from(value: &fuel::Output) -> Self {
-        unimplemented!()
+        match value.clone() {
+            fuel::Output::Coin {
+                to,
+                amount,
+                asset_id,
+            } => sway::Output::Coin(sway::OutputCoin {
+                to,
+                amount,
+                asset_id,
+            }),
+            fuel::Output::Contract(ref contract) => sway::Output::Contract(contract.into()),
+            fuel::Output::Change {
+                to,
+                amount,
+                asset_id,
+            } => sway::Output::Change(sway::OutputChange::new(to, amount, asset_id)),
+            fuel::Output::Variable {
+                to,
+                amount,
+                asset_id,
+            } => sway::Output::Variable(sway::OutputVariable::new(to, amount, asset_id)),
+
+            fuel::Output::ContractCreated {
+                contract_id,
+                state_root,
+            } => sway::Output::ContractCreated(sway::OutputContractCreated::new(
+                contract_id,
+                Bits256::from(AssetId::new(state_root.as_slice().try_into().unwrap())),
+            )),
+        }
     }
 }
 

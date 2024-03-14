@@ -48,7 +48,10 @@ pub struct Script {
     receipts: [Option<receipt::Receipt>; 7],
 }
 
-pub struct Policies {}
+pub struct Policies {
+    values: [Option<u64>; 7]
+}
+
 
 pub enum Input {
     CoinSigned: Coin,
