@@ -127,7 +127,7 @@ pub struct OutputContractCreated {
 
 
 pub struct Witness {
-    // data: Vec<u8>,
+    data: BYTES,
 }
 
 pub struct Create {

@@ -215,7 +215,9 @@ impl From<&fuel::Output> for sway::Output {
 
 impl From<&fuel::Witness> for sway::Witness {
     fn from(value: &fuel::Witness) -> Self {
-        unimplemented!()
+        Self {
+            data: value.as_vec().clone().vec_to_option_array(),
+        }
     }
 }
 
