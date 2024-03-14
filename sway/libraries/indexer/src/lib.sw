@@ -21,7 +21,8 @@ pub struct Header {
 }
 
 pub struct FuelBlock {
-    // block_id: b256,
+    block_id: b256,
+    height: u32,
     header: Header,
     transactions: [Option<Transaction>; 7],
     // temporary, for testing
@@ -80,7 +81,8 @@ pub struct Message
     /// The receiver on the `Fuel` chain.
     recipient: Address,
     amount: u64,
-    nonce: u256,
+    // TODO: u256
+    nonce: b256,
     witness_index: u8,
     predicate_gas_used: u64,
     data: BYTES,
@@ -116,7 +118,8 @@ pub struct OutputVariable {
 
 pub struct OutputContractCreated {
     contract_id: ContractId,
-    state_root: u256,
+    // TODO: u256
+    state_root: b256,
 }
 
 
@@ -132,12 +135,15 @@ pub struct Create {
     inputs: [Option<Input>; 7],
     outputs: [Option<Output>; 7],
     witnesses: [Option<Witness>; 7],
-    salt: u256,
+    // TODO: u256
+    salt: b256,
 }
 
 pub struct StorageSlot {
-    key: u256,
-    value: u256,
+    // TODO: u256
+    key: b256,
+    // TODO: u256
+    value: b256,
 }
 
 pub struct TxPointer {

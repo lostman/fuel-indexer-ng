@@ -14,8 +14,9 @@ use fuel_vm::{
 mod abi;
 mod blocks;
 mod ecal;
-mod prisma;
 mod extensions;
+mod prisma;
+mod types;
 
 use crate::abi::{print_abi, ABI};
 use crate::ecal::MyEcal;
