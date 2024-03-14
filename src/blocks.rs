@@ -1,18 +1,6 @@
-use fuels::{
-    tx::{
-        field::{InputContract, MintAmount, MintAssetId, OutputContract, TxPointer},
-        AssetId, Receipt, TxId,
-    },
-    types::Bits256,
-};
-
+use fuels::{tx::AssetId, types::Bits256};
 use fuel_core_client::client::FuelClient;
 use fuel_core_types::{fuel_tx::Transaction, fuel_types::BlockHeight};
-
-use fuels::tx::field::{
-    BytecodeLength, BytecodeWitnessIndex, Inputs, Outputs, Policies, ReceiptsRoot, Salt, Script,
-    ScriptData, ScriptGasLimit, StorageSlots, Witnesses,
-};
 
 pub struct BlocksIter {
     height: BlockHeight,
