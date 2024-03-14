@@ -29,7 +29,7 @@ pub struct ReturnData {
     id: ContractId,
     ptr: u64,
     len: u64,
-    digest: u64,
+    digest: b256,
     pc: u64,
     is: u64,
     // data: Option<Vec<u8>>,
@@ -68,7 +68,7 @@ pub struct LogData {
     rb: u64,
     ptr: u64,
     len: u64,
-    digest: u256,
+    digest: b256,
     pc: u64,
     is: u64,
     // #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
@@ -101,7 +101,7 @@ pub struct MessageOut {
     amount: u64,
     // nonce: Nonce,
     len: u64,
-    digest: u256,
+    digest: b256,
     // #[derivative(Debug(format_with = "fmt_option_truncated_hex::<16>"))]
     // #[derivative(PartialEq = "ignore", Hash = "ignore")]
     // #[canonical(skip)]
@@ -109,7 +109,7 @@ pub struct MessageOut {
 }
 
 pub struct Mint {
-    sub_id: u256,
+    sub_id: b256,
     contract_id: ContractId,
     val: u64,
     pc: u64,
@@ -117,7 +117,7 @@ pub struct Mint {
 }
 
 pub struct Burn {
-    sub_id: u256,
+    sub_id: b256,
     contract_id: ContractId,
     val: u64,
     pc: u64,

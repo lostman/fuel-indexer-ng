@@ -71,24 +71,13 @@ impl Iterator for BlocksIter {
                 .map(|(tx, tx_extra)| (tx, tx_extra).into())
                 .collect();
 
-            // Since we are simulating Vec<T> with [Option<T>; 1000], we need to
-            // convert the values we have to Some(t) and extend the Vec with
-            // Nones, and then convert.
-
-            let mut transactions = transactions
-                .into_iter()
-                .map(|x| Some(x))
-                .collect::<Vec<Option<crate::types::sway::Transaction>>>();
-
-            // TODO: 7 is a small value. This needs to be configurable. Or when
-            // Vec lands it won't be a problem.
-            transactions.extend(std::iter::repeat(None).take(7 - transactions.len()));
+            use crate::types::VecExt;
 
             let block = crate::types::sway::FuelBlock {
                 block_id: Bits256::from(AssetId::new(*block.id)),
                 height: block.header.height,
                 header,
-                transactions: transactions.try_into().unwrap(),
+                transactions: transactions.vec_to_option_array(),
             };
 
             self.height = self.height.succ().expect("Max height reached.");

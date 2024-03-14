@@ -32,18 +32,22 @@ pub mod sway {
 }
 
 // Until Vec<T> is supported
-trait VecExt<T, const N: usize> {
+pub trait VecExt<T, const N: usize> {
     fn vec_to_option_array(self) -> [Option<T>; N];
 }
 
 // Until Vec<T> is supported
-impl<T: std::fmt::Debug, const N: usize> VecExt<T, N> for Vec<T> {
+impl<T: std::fmt::Debug + Clone, const N: usize> VecExt<T, N> for Vec<T> {
+    #[track_caller]
     fn vec_to_option_array(self) -> [Option<T>; N] {
-        self.into_iter()
+        let mut result = self
+            .into_iter()
             .map(|x| Some(x))
-            .collect::<Vec<Option<T>>>()
-            .try_into()
-            .unwrap()
+            .collect::<Vec<Option<T>>>();
+        if result.len() < N {
+            result.extend(std::iter::repeat(None).take(N - result.len()));
+        }
+        result.try_into().unwrap()
     }
 }
 
@@ -328,7 +332,7 @@ impl From<&fuel::OutputContract> for sway::OutputContract {
 
 impl From<&fuel::Receipt> for sway::Receipt {
     fn from(receipt: &fuel::Receipt) -> Self {
-        match receipt {
+        match receipt.clone() {
             fuel::Receipt::Call {
                 id,
                 to,
@@ -340,16 +344,35 @@ impl From<&fuel::Receipt> for sway::Receipt {
                 pc,
                 is,
             } => Self::Call(sway::Call {
-                id: id.to_owned(),
-                to: to.to_owned(),
-                amount: amount.to_owned(),
-                asset_id: asset_id.to_owned(),
-                gas: gas.to_owned(),
-                param_1: param1.to_owned(),
-                param_2: param2.to_owned(),
-                pc: pc.to_owned(),
-                is: is.to_owned(),
+                id,
+                to,
+                amount,
+                asset_id,
+                gas,
+                param_1: param1,
+                param_2: param2,
+                pc,
+                is,
             }),
+            fuel::Receipt::Return { id, val, pc, is } => {
+                Self::Return(sway::Return { id, val, pc, is })
+            }
+            // fuel::Receipt::ReturnData {
+            //     id,
+            //     ptr,
+            //     len,
+            //     digest,
+            //     pc,
+            //     is,
+            //     data,
+            // } => Self::ReturnData(sway::ReturnData {
+            //     id,
+            //     ptr,
+            //     len,
+            //     digest,
+            //     pc,
+            //     is,
+            // }),
             _ => unimplemented!("{receipt:#?}"),
         }
     }

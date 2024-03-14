@@ -98,7 +98,7 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 use sqlx::{Pool, Postgres};
 
 async fn foo(pool: Pool<Postgres>) {
-    let bi = blocks::BlocksIter::new(1).unwrap();
+    let bi = blocks::BlocksIter::new(6000000).unwrap();
     for b in bi {
         println!("{:#?}", b);
 

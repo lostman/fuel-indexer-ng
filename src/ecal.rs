@@ -896,26 +896,27 @@ impl SaveStmtBuilder {
 
             let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres} LIMIT 1)");
             self.push_stmt(stmt);
+        // No nested struct, enum, or array
         } else {
             let mut where_clause = vec![];
             let mut values: Vec<String> = vec![];
             for (i, t) in toks.iter().enumerate() {
                 let col = columns[i].clone();
 
-                if t.is_enum() {
-                    let (n, inner, _) = t.as_enum();
-                    where_clause.push(format!("\"{}Variant\" = {}", col, n));
-                    where_clause.push(format!("{}Id = {}", col, 9876));
+                // if t.is_enum() {
+                //     let (n, inner, _) = t.as_enum();
+                //     where_clause.push(format!("\"{}Variant\" = {}", col, n));
+                //     where_clause.push(format!("{}Id = {}", col, 9876));
 
-                    columns[i] = format!("{col}Id");
-                    columns.insert(i, format!("\"{col}Variant\""));
+                //     columns[i] = format!("{col}Id");
+                //     columns.insert(i, format!("\"{col}Variant\""));
 
-                    values.push("3".to_string());
-                    values.push(n.to_string());
-                } else if !t.is_array() && !t.is_struct() {
-                    where_clause.push(format!("{} = {}", col, tok_to_string(t)));
-                    values.push(tok_to_string(t));
-                }
+                //     values.push("3".to_string());
+                //     values.push(n.to_string());
+                // } else if !t.is_array() && !t.is_struct() {
+                where_clause.push(format!("{} = {}", col, tok_to_string(t)));
+                values.push(tok_to_string(t));
+                // }
             }
             let where_clause = where_clause.join(" AND ");
 
