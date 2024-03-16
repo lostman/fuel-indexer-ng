@@ -38,8 +38,8 @@ pub enum Transaction {
 
 pub struct Script {
     script_gas_limit: u64,
-    script_bytes: BYTES,
-    script_data: BYTES,
+    script_bytes: [Option<u8>; 128],
+    script_data: [Option<u8>; 128],
     policies: Policies,
     inputs: [Option<Input>; 7],
     outputs: [Option<Output>; 7],
@@ -49,7 +49,7 @@ pub struct Script {
 }
 
 pub struct Policies {
-    values: [Option<u64>; 7]
+    // values: [Option<u64>; 7]
 }
 
 

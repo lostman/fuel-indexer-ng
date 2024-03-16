@@ -12,8 +12,8 @@ use crate::extensions::TypeDeclarationExt;
 mod sql {
     pub use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
     pub use sqlparser::ast::{
-        ColumnDef, ColumnOption, ColumnOptionDef, DataType, Ident, ObjectName, Statement,
-        TableConstraint,
+        ColumnDef, ColumnOption, ColumnOptionDef, DataType, ExactNumberInfo, Ident, ObjectName,
+        Statement, TableConstraint,
     };
 
     pub fn quoted_ident(name: &str) -> Ident {
@@ -307,7 +307,13 @@ impl SchemaConstructor {
             ParamType::U8 | ParamType::U16 | ParamType::U32 => {
                 Self::one_column(name, sql::DataType::Integer(None))
             }
-            ParamType::U64 => Self::one_column(name, sql::DataType::BigInt(None)),
+            // For a 64-bit unsigned integer, which ranges from 0 to
+            // 18,446,744,073,709,551,615 (a 20-digit number), we need
+            // Precision(20)
+            ParamType::U64 => Self::one_column(
+                name,
+                sql::DataType::Numeric(sql::ExactNumberInfo::Precision(20)),
+            ),
             // hex-encoded
             ParamType::U128 => Self::one_column(name, sql::DataType::Text),
             // hex-encoded
@@ -329,9 +335,11 @@ impl SchemaConstructor {
             ParamType::Vector(_) => Self::one_column(name, sql::DataType::Bytea),
             ParamType::Enum { .. } => {
                 let type_declaration = self.abi.types.get(&type_application.type_id).unwrap();
+                // Option<_>
                 if type_declaration.type_field == "enum Option" {
                     let x = &type_application.type_arguments.as_ref().unwrap()[0];
                     let y = self.abi.types.get(&x.type_id).unwrap();
+                    // Option<Vec<_>>
                     if y.type_field == "struct Vec" {
                         let z = &x.type_arguments.as_ref().unwrap()[0];
                         let z2 = self.abi.types.get(&z.type_id).unwrap();
@@ -341,8 +349,10 @@ impl SchemaConstructor {
                         } else {
                             unimplemented!()
                         }
+                    } else if y.is_struct() {
+                        Self::one_column(&format!("{name}Id"), sql::DataType::Integer(None))
                     } else {
-                        unimplemented!()
+                        unimplemented!("{name} {type_application:#?} {type_declaration:#?} {y:#?}")
                     }
                 } else {
                     // panic!("{type_application:#?}{type_declaration:#?}\n{param_type:#?}")

@@ -4,7 +4,30 @@ pub enum Receipt {
     Call: Call,
     Return: Return,
     ReturnData: ReturnData,
+    Panic: Panic,
+    Revert: Revert,
+    Log: Log,
+    LogData: LogData,
+    Transfer: Transfer,
+    TransferOut: TransferOut,
+    ScriptResult: ScriptResult,
+    MessageOut: MessageOut,
+    Mint: MintReceipt,
+    Burn: Burn,
 }
+
+pub struct ScriptResult {
+    // result: ScriptExecutionResult,
+    gas_used: u64,
+}
+
+// pub enum ScriptExecutionResult {
+//     Success: (),
+//     Revert: (),
+//     Panic: (),
+//     // Generic failure case since any u64 is valid here
+//     GenericFailure: u64,
+// }
 
 pub struct Call {
     id: ContractId,
@@ -108,7 +131,7 @@ pub struct MessageOut {
     // data: Option<Vec<u8>>,
 }
 
-pub struct Mint {
+pub struct MintReceipt {
     sub_id: b256,
     contract_id: ContractId,
     val: u64,

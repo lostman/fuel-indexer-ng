@@ -8,10 +8,12 @@ pub trait TypeDeclarationExt {
     fn is_enum(&self) -> bool;
     fn is_struct(&self) -> bool;
     fn is_array(&self) -> bool;
+    fn is_u8(&self) -> bool;
     fn is_option(&self) -> bool;
     fn has_nested_struct(&self, abi: &crate::ABI) -> bool;
     fn has_nested_enum(&self, abi: &crate::ABI) -> bool;
     fn has_nested_array(&self, abi: &crate::ABI) -> bool;
+    fn is_entity(&self) -> bool;
 }
 
 impl TypeDeclarationExt for TypeDeclaration {
@@ -50,6 +52,10 @@ impl TypeDeclarationExt for TypeDeclaration {
             .unwrap_or(false)
     }
 
+    fn is_u8(&self) -> bool {
+        self.type_field == "u8"
+    }
+
     fn is_option(&self) -> bool {
         self.type_field.starts_with("enum Option")
     }
@@ -71,6 +77,10 @@ impl TypeDeclarationExt for TypeDeclaration {
             .iter()
             .any(TypeDeclarationExt::is_array)
     }
+
+    fn is_entity(&self) -> bool {
+        self.is_array() || self.is_struct() || self.is_enum()
+    }
 }
 
 pub trait TokenExt {
@@ -80,9 +90,11 @@ pub trait TokenExt {
     fn is_struct(&self) -> bool;
     fn is_enum(&self) -> bool;
     fn is_array(&self) -> bool;
+    fn is_entity(&self) -> bool;
 }
 
 impl TokenExt for Token {
+    #[track_caller]
     fn as_struct(&self) -> &Vec<Token> {
         match self {
             Token::Struct(xs) => xs,
@@ -90,6 +102,7 @@ impl TokenExt for Token {
         }
     }
 
+    #[track_caller]
     fn as_enum(&self) -> (u64, Token, EnumVariants) {
         match self {
             Token::Enum(x) => *x.clone(),
@@ -97,6 +110,7 @@ impl TokenExt for Token {
         }
     }
 
+    #[track_caller]
     fn as_array(&self) -> &Vec<Token> {
         match self {
             Token::Array(xs) => xs,
@@ -122,6 +136,32 @@ impl TokenExt for Token {
         match self {
             Token::Array(_) => true,
             _ => false,
+        }
+    }
+
+    fn is_entity(&self) -> bool {
+        match self {
+            // Base types
+            Self::Unit => false,
+            Self::U8(_) => false,
+            Self::U16(_) => false,
+            Self::U32(_) => false,
+            Self::U64(_) => false,
+            Self::U128(_) => false,
+            Self::U256(_) => false,
+            Self::Bool(_) => false,
+            Self::B256(_) => false,
+            Self::StringSlice(_) => false,
+            Self::StringArray(_) => false,
+            Self::RawSlice(_) => false,
+            Self::Bytes(_) => false,
+            Self::String(_) => false,
+            // Types that contain other types
+            Self::Array(_) => true,
+            Self::Vector(_) => true,
+            Self::Struct(_) => true,
+            Self::Enum(_) => true,
+            Self::Tuple(_) => true,
         }
     }
 }

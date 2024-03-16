@@ -634,6 +634,10 @@ impl SaveStmtBuilder {
     }
 
     fn save_value(&mut self, type_id: usize, target_value: Token) {
+        if target_value == Token::Unit {
+            return;
+        };
+
         let target_decl = self.abi.type_declaration(type_id);
 
         println!(
@@ -641,9 +645,9 @@ impl SaveStmtBuilder {
             target_decl.type_field
         );
 
-        if target_value == Token::Unit {
-            return;
-        };
+        if !(target_value.is_array() || target_value.is_enum() || target_value.is_struct()) {
+            panic!("Expected array, enum, or struct, but got: {target_value:?}");
+        }
 
         if target_decl.is_option() {
             println!(">> SAVE_VALUE OPTION");
@@ -651,6 +655,7 @@ impl SaveStmtBuilder {
             let elt_type = target_decl.components.as_ref().unwrap().clone()[1].clone();
             let elt = target_value.as_enum().1;
             println!(">> SAVING ELT type={elt_type:#?} elt={elt:#?}");
+            // If `Some(v)`, save `v`, else, do nothing when `None`
             if !(target_decl.type_field == "()") {
                 self.save_value(elt_type.type_id, elt.clone());
             }
@@ -681,7 +686,7 @@ impl SaveStmtBuilder {
         } else if target_decl.type_field == "()" {
             vec![]
         } else {
-            panic!("{target_decl:#?}")
+            panic!("{target_decl:#?}\n{target_value:#?}")
         };
 
         let mut columns: Vec<String> = target_decl
@@ -693,10 +698,10 @@ impl SaveStmtBuilder {
                 let decl = self.abi.type_declaration(field.type_id);
                 if decl.is_array() {
                     None
-                } else if decl.is_struct() || decl.is_enum() && !decl.is_u256() {
+                } else if (decl.is_struct() || decl.is_enum()) && !decl.is_u256() {
                     Some(format!("\"{}Id\"", field.name))
                 } else {
-                    Some(format!("{}", field.name))
+                    Some(format!("\"{}\"", field.name))
                 }
             })
             .collect();
@@ -747,11 +752,22 @@ impl SaveStmtBuilder {
                 } else if field_decl.is_array() {
                     let t = &toks[i];
                     let arr_type = field_decl.components.as_ref().unwrap().clone()[0].clone();
-                    println!("ARR TYPE: {arr_type:#?}");
+
+                    let arr_elt_decl = self.abi.types.get(&arr_type.type_id).unwrap();
+
+                    println!("ARR TYPE: {arr_type:#?}\nARR ELT DECL:\n{arr_elt_decl:#?}");
+
                     let elt_type = arr_type.type_arguments.as_ref().unwrap()[0].clone();
-                    println!("ELT TYPE: {elt_type:#?}");
-                    for elt in t.as_array() {
-                        self.save_value(elt_type.type_id, elt.as_enum().1)
+                    let elt_decl = self.abi.types.get(&elt_type.type_id).unwrap();
+                    println!("ELT TYPE: {elt_type:#?}\n{elt_decl:#?}");
+
+                    // [Option<u8>; N] to simulate Vec<u8>
+                    if arr_elt_decl.type_field == "enum Option" && !elt_decl.is_entity() {
+                        // TODO: turn [Option<u8>; N] into [u8] and save it as hex string
+                    } else {
+                        for elt in t.as_array() {
+                            self.save_value(elt_type.type_id, elt.as_enum().1)
+                        }
                     }
 
                     // Arrays have foreign keys pointing back.
@@ -891,42 +907,110 @@ impl SaveStmtBuilder {
             let hash = hash_tokens(&toks);
 
             let struct_name = target_decl.struct_or_enum_name().unwrap();
-            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) (SELECT {selects} FROM {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {wheres})) RETURNING id)", columns = columns.join(", "));
+            let columns = if columns.is_empty() {
+                "".to_string()
+            } else {
+                format!("({})", columns.join(", "))
+            };
+            let wheres = if wheres.is_empty() {
+                "".to_string()
+            } else {
+                "WHERE ".to_string() + &wheres
+            };
+            let sources = if sources.is_empty() {
+                "".to_string()
+            } else {
+                "FROM ".to_string() + &sources
+            };
+            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" {columns} (SELECT {selects} {sources} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" {wheres})) RETURNING id)");
             self.push_stmt(stmt);
 
-            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {wheres} LIMIT 1)");
+            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" {wheres} LIMIT 1)");
             self.push_stmt(stmt);
         // No nested struct, enum, or array
         } else {
+            println!("PLAIN DATA");
             let mut where_clause = vec![];
             let mut values: Vec<String> = vec![];
             for (i, t) in toks.iter().enumerate() {
-                let col = columns[i].clone();
+                // TODO: plain enum without nested structs, enums, or arrays.
+                // HOW TO REPRESENT IT IN THE DB? CUSTOM ENUM TYPE?
+                if target_decl.is_enum() {
+                    let (n, b, c) = target_value.as_enum();
 
-                // if t.is_enum() {
-                //     let (n, inner, _) = t.as_enum();
-                //     where_clause.push(format!("\"{}Variant\" = {}", col, n));
-                //     where_clause.push(format!("{}Id = {}", col, 9876));
+                    columns = target_decl
+                        .components
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(m, _)| {
+                            if n == (m as u64) {
+                                Some("Variant".to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    // let mut columns: Vec<String> = target_decl
+                    //     .components
+                    //     .as_ref()
+                    //     .unwrap()
+                    //     .iter()
+                    //     .filter_map(|field| {
+                    //         let decl = self.abi.type_declaration(field.type_id);
+                    //         if decl.is_array() {
+                    //             None
+                    //         } else if (decl.is_struct() || decl.is_enum()) && !decl.is_u256() {
+                    //             Some(format!("\"{}Id\"", field.name))
+                    //         } else {
+                    //             Some(format!("\"{}\"", field.name))
+                    //         }
+                    //     })
+                    //     .collect();
 
-                //     columns[i] = format!("{col}Id");
-                //     columns.insert(i, format!("\"{col}Variant\""));
+                    // TODO: not quite correct
+                    // columns[i] = format!("{}Id", columns[i]);
 
-                //     values.push("3".to_string());
-                //     values.push(n.to_string());
-                // } else if !t.is_array() && !t.is_struct() {
-                where_clause.push(format!("{} = {}", col, tok_to_string(t)));
-                values.push(tok_to_string(t));
-                // }
+                    // where_clause.push(format!("\"{}Variant\" = {}", col, n));
+                    where_clause.push(format!("Variant = {}", columns[i]));
+                    //values.push("3".to_string());
+                    //values.push(n.to_string());
+                } else {
+                    println!(
+                        "FOOBAR {} {t:#?}",
+                        target_decl.struct_or_enum_name().unwrap()
+                    );
+                    where_clause.push(format!("{} = {}", columns[i], tok_to_string(t)));
+
+                    values.push(tok_to_string(t));
+                }
             }
             let where_clause = where_clause.join(" AND ");
 
             let hash = hash_tokens(&toks);
 
             let struct_name = target_decl.struct_or_enum_name().unwrap();
-            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" ({columns}) SELECT {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" WHERE {where_clause}) RETURNING id)", columns = columns.join(", "), values = values.join(", "));
+
+            let columns = if columns.is_empty() {
+                "".to_string()
+            } else {
+                format!("({})", columns.join(", "))
+            };
+            let where_clause = if where_clause.is_empty() {
+                "".to_string()
+            } else {
+                "WHERE ".to_string() + &where_clause
+            };
+            let values = if values.is_empty() {
+                "SELECT".to_string()
+            } else {
+                "SELECT ".to_string() + &values.join(", ")
+            };
+            let stmt = format!("{struct_name}_new_row_{hash} AS (INSERT INTO \"{struct_name}\" {columns} {values} WHERE NOT EXISTS (SELECT 1 FROM \"{struct_name}\" {where_clause}) RETURNING id)");
             self.push_stmt(stmt);
 
-            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" WHERE {where_clause} LIMIT 1)");
+            let stmt = format!("{struct_name}_id_{hash} AS (SELECT id from {struct_name}_new_row_{hash} UNION ALL SELECT id from \"{struct_name}\" {where_clause} LIMIT 1)");
             self.push_stmt(stmt);
         }
     }

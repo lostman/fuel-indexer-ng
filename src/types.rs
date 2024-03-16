@@ -1,7 +1,7 @@
 use fuels::{
     tx::{
         field::{InputContract, MintAmount, MintAssetId, OutputContract, TxPointer},
-        AssetId, Receipt, TxId,
+        AssetId, Bytes32, Receipt, TxId,
     },
     types::Bits256,
 };
@@ -19,7 +19,7 @@ mod fuel {
         input::message::FullMessage,
         output::contract::Contract as OutputContract,
         policies::{Policies, PolicyType},
-        Create, Input, Mint, Output, Receipt, Script, StorageSlot, Witness,
+        Create, Input, Mint, Output, Receipt, Script, ScriptExecutionResult, StorageSlot, Witness,
     };
 }
 
@@ -45,7 +45,11 @@ impl<T: std::fmt::Debug + Clone, const N: usize> VecExt<T, N> for Vec<T> {
             .map(|x| Some(x))
             .collect::<Vec<Option<T>>>();
         if result.len() < N {
+            // Fill the remainder of the array with None
             result.extend(std::iter::repeat(None).take(N - result.len()));
+        } else if result.len() > N {
+            // Truncate to match array's maximum size
+            result.truncate(N);
         }
         result.try_into().unwrap()
     }
@@ -109,10 +113,10 @@ impl From<&fuel::Policies> for sway::Policies {
     fn from(value: &fuel::Policies) -> Self {
         use strum::IntoEnumIterator;
         Self {
-            values: fuel::PolicyType::iter()
-                .map(|policy_type| value.get(policy_type).unwrap_or_default())
-                .collect::<Vec<_>>()
-                .vec_to_option_array(),
+            // values: fuel::PolicyType::iter()
+            //     .map(|policy_type| value.get(policy_type).unwrap_or_default())
+            //     .collect::<Vec<_>>()
+            //     .vec_to_option_array(),
         }
     }
 }
@@ -357,23 +361,184 @@ impl From<&fuel::Receipt> for sway::Receipt {
             fuel::Receipt::Return { id, val, pc, is } => {
                 Self::Return(sway::Return { id, val, pc, is })
             }
-            // fuel::Receipt::ReturnData {
-            //     id,
-            //     ptr,
-            //     len,
-            //     digest,
-            //     pc,
-            //     is,
-            //     data,
-            // } => Self::ReturnData(sway::ReturnData {
-            //     id,
-            //     ptr,
-            //     len,
-            //     digest,
-            //     pc,
-            //     is,
-            // }),
-            _ => unimplemented!("{receipt:#?}"),
+            fuel::Receipt::ReturnData {
+                id,
+                ptr,
+                len,
+                digest,
+                pc,
+                is,
+                data,
+            } => Self::ReturnData(sway::ReturnData {
+                id,
+                ptr,
+                len,
+                digest: Bits256::from(AssetId::new(digest.to_vec().try_into().unwrap())),
+                pc,
+                is,
+            }),
+            fuel::Receipt::ScriptResult { result, gas_used } => {
+                Self::ScriptResult(sway::ScriptResult {
+                    // result: (&result).into(),
+                    gas_used,
+                })
+            }
+            fuel::Receipt::MessageOut {
+                sender,
+                recipient,
+                amount,
+                nonce,
+                len,
+                digest,
+                data,
+            } => Self::MessageOut(sway::MessageOut {
+                sender,
+                recipient,
+                amount,
+                // nonce,
+                digest: Bits256::from(AssetId::new(digest.as_slice().try_into().unwrap())),
+                len,
+            }),
+            fuel::Receipt::Mint {
+                sub_id,
+                contract_id,
+                val,
+                pc,
+                is,
+            } => Self::Mint(sway::MintReceipt {
+                sub_id: Bits256::from(AssetId::new(sub_id.as_slice().try_into().unwrap())),
+                contract_id,
+                val,
+                pc,
+                is,
+            }),
+
+            fuel::Receipt::Revert { id, ra, pc, is } => {
+                Self::Revert(sway::Revert { id, ra, pc, is })
+            }
+
+            fuel::Receipt::Panic {
+                id,
+                reason,
+                pc,
+                is,
+                contract_id,
+            } => Self::Panic(sway::Panic {
+                id,
+                // reason: reason.into(),
+                pc,
+                is,
+                contract_id,
+            }),
+
+            fuel::Receipt::TransferOut {
+                id,
+                to,
+                amount,
+                asset_id,
+                pc,
+                is,
+            } => Self::TransferOut(sway::TransferOut {
+                id,
+                to,
+                amount,
+                asset_id,
+                pc,
+                is,
+            }),
+
+            fuel::Receipt::LogData {
+                id,
+                ra,
+                rb,
+                ptr,
+                len,
+                digest,
+                pc,
+                is,
+                data,
+            } => Self::LogData(sway::LogData {
+                id,
+                ra,
+                rb,
+                ptr,
+                len,
+                digest: digest.to_bits256(),
+                pc,
+                is,
+                // data,
+            }),
+
+            fuel::Receipt::Log {
+                id,
+                ra,
+                rb,
+                rc,
+                rd,
+                pc,
+                is,
+            } => Self::Log(sway::Log {
+                id,
+                ra,
+                rb,
+                rc,
+                rd,
+                pc,
+                is,
+            }),
+
+            fuel::Receipt::Burn {
+                sub_id,
+                contract_id,
+                val,
+                pc,
+                is,
+            } => Self::Burn(sway::Burn {
+                sub_id: sub_id.to_bits256(),
+                contract_id,
+                val,
+                pc,
+                is,
+            }),
+
+            fuel::Receipt::Transfer {
+                id,
+                to,
+                amount,
+                asset_id,
+                pc,
+                is,
+            } => Self::Transfer(sway::Transfer {
+                id,
+                to,
+                amount,
+                asset_id,
+                pc,
+                is,
+            }),
         }
     }
 }
+
+trait Bytes32Ext {
+    fn to_bits256(&self) -> Bits256;
+}
+
+impl Bytes32Ext for Bytes32 {
+    fn to_bits256(&self) -> Bits256 {
+        Bits256::from(AssetId::new(self.as_slice().try_into().unwrap()))
+    }
+}
+
+// impl From<&fuel::ScriptExecutionResult> for sway::ScriptExecutionResult {
+//     fn from(value: &fuel::ScriptExecutionResult) -> Self {
+//         match value {
+//             fuel::ScriptExecutionResult::Success => sway::ScriptExecutionResult::Success,
+//             fuel::ScriptExecutionResult::Revert => sway::ScriptExecutionResult::Revert,
+//             fuel::ScriptExecutionResult::Panic => sway::ScriptExecutionResult::Panic,
+//             fuel::ScriptExecutionResult::GenericFailure(n) => {
+//                 sway::ScriptExecutionResult::GenericFailure(*n)
+//             }
+//         }
+//     }
+// }
