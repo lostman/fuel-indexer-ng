@@ -16,6 +16,7 @@ mod blocks;
 mod ecal;
 mod extensions;
 mod prisma;
+mod schema_builder;
 mod types;
 
 use crate::abi::{print_abi, ABI};
@@ -77,7 +78,7 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     // std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
-    let mut db_schema = crate::abi::SchemaConstructor::new(abi.clone());
+    let mut db_schema = crate::schema_builder::SchemaConstructor::new(abi.clone());
     db_schema.process_program_abi(&abi);
     for stmt in db_schema.statements() {
         println!("{};", stmt);
@@ -96,7 +97,6 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 }
 
 use sqlx::{Pool, Postgres};
-
 
 async fn foo(pool: Pool<Postgres>) {
     let bi = blocks::BlocksIter::new(6000803).unwrap();
