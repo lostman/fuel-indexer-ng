@@ -7,24 +7,74 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Address {
+  id    Int    @id
+  value String
+}
+
 model AssetId {
   id    Int    @id
   value String
-  Mint  Mint[]
+}
+
+model Burn {
+  id            Int        @id
+  sub_id        String
+  contract_id   ContractId @relation(fields: [contract_idId], references: [id])
+  contract_idId Int
+  val           Int
+  pc            Int
+  is            Int
+}
+
+model Coin {
+  id                 Int       @id
+  utxo_id            UtxoId    @relation(fields: [utxo_idId], references: [id])
+  utxo_idId          Int
+  owner              Address   @relation(fields: [ownerId], references: [id])
+  ownerId            Int
+  amount             Int
+  asset_id           AssetId   @relation(fields: [asset_idId], references: [id])
+  asset_idId         Int
+  tx_pointer         TxPointer @relation(fields: [tx_pointerId], references: [id])
+  tx_pointerId       Int
+  witness_index      Int
+  maturity           Int
+  predicate_gas_used Int
 }
 
 model ContractId {
-  id            Int             @id
-  value         String
-  InputContract InputContract[]
+  id    Int    @id
+  value String
 }
 
 model Create {
-  id Int @id
+  id                     Int      @id
+  bytecode_length        Int
+  bytecode_witness_index Int
+  policies               Policies @relation(fields: [policiesId], references: [id])
+  policiesId             Int
+  salt                   String
 }
 
 model FuelBlock {
-  id Int @id
+  id       Int    @id
+  block_id String
+  height   Int
+  header   Header @relation(fields: [headerId], references: [id])
+  headerId Int
+}
+
+model Header {
+  id                    Int    @id
+  block_id              String
+  da_height             Int
+  transactions_count    Int
+  message_receipt_count Int
+  transactions_root     String
+  message_receipt_root  String
+  height                Int
+  prev_root             String
 }
 
 model InputContract {
@@ -37,7 +87,54 @@ model InputContract {
   tx_pointerId  Int
   contract_id   ContractId @relation(fields: [contract_idId], references: [id])
   contract_idId Int
-  Mint          Mint[]
+}
+
+model Log {
+  id   Int        @id
+  id   ContractId @relation(fields: [idId], references: [id])
+  idId Int
+  ra   Int
+  rb   Int
+  rc   Int
+  rd   Int
+  pc   Int
+  is   Int
+}
+
+model LogData {
+  id     Int        @id
+  id     ContractId @relation(fields: [idId], references: [id])
+  idId   Int
+  ra     Int
+  rb     Int
+  ptr    Int
+  len    Int
+  digest String
+  pc     Int
+  is     Int
+}
+
+model Message {
+  id                 Int     @id
+  sender             Address @relation(fields: [senderId], references: [id])
+  senderId           Int
+  recipient          Address @relation(fields: [recipientId], references: [id])
+  recipientId        Int
+  amount             Int
+  nonce              String
+  witness_index      Int
+  predicate_gas_used Int
+}
+
+model MessageOut {
+  id          Int     @id
+  sender      Address @relation(fields: [senderId], references: [id])
+  senderId    Int
+  recipient   Address @relation(fields: [recipientId], references: [id])
+  recipientId Int
+  amount      Int
+  len         Int
+  digest      String
 }
 
 model Mint {
@@ -53,29 +150,156 @@ model Mint {
   mint_asset_idId   Int
 }
 
+model MintReceipt {
+  id            Int        @id
+  sub_id        String
+  contract_id   ContractId @relation(fields: [contract_idId], references: [id])
+  contract_idId Int
+  val           Int
+  pc            Int
+  is            Int
+}
+
+model OutputChange {
+  id         Int     @id
+  to         Address @relation(fields: [toId], references: [id])
+  toId       Int
+  amount     Int
+  asset_id   AssetId @relation(fields: [asset_idId], references: [id])
+  asset_idId Int
+}
+
+model OutputCoin {
+  id         Int     @id
+  to         Address @relation(fields: [toId], references: [id])
+  toId       Int
+  amount     Int
+  asset_id   AssetId @relation(fields: [asset_idId], references: [id])
+  asset_idId Int
+}
+
 model OutputContract {
   id           Int    @id
   input_index  Int
   balance_root String
   state_root   String
-  Mint         Mint[]
 }
 
-model Script {
+model OutputContractCreated {
+  id            Int        @id
+  contract_id   ContractId @relation(fields: [contract_idId], references: [id])
+  contract_idId Int
+  state_root    String
+}
+
+model OutputVariable {
+  id         Int     @id
+  to         Address @relation(fields: [toId], references: [id])
+  toId       Int
+  amount     Int
+  asset_id   AssetId @relation(fields: [asset_idId], references: [id])
+  asset_idId Int
+}
+
+model Panic {
+  id          Int         @id
+  id          ContractId  @relation(fields: [idId], references: [id])
+  idId        Int
+  pc          Int
+  is          Int
+  contract_id ContractId?
+}
+
+model Policies {
   id Int @id
 }
 
+model Return {
+  id   Int        @id
+  id   ContractId @relation(fields: [idId], references: [id])
+  idId Int
+  val  Int
+  pc   Int
+  is   Int
+}
+
+model ReturnData {
+  id     Int        @id
+  id     ContractId @relation(fields: [idId], references: [id])
+  idId   Int
+  ptr    Int
+  len    Int
+  digest String
+  pc     Int
+  is     Int
+}
+
+model Revert {
+  id   Int        @id
+  id   ContractId @relation(fields: [idId], references: [id])
+  idId Int
+  ra   Int
+  pc   Int
+  is   Int
+}
+
+model Script {
+  id               Int      @id
+  script_gas_limit Int
+  policies         Policies @relation(fields: [policiesId], references: [id])
+  policiesId       Int
+  receipts_root    String
+}
+
+model ScriptResult {
+  id       Int @id
+  gas_used Int
+}
+
+model StorageSlot {
+  id    Int    @id
+  key   String
+  value String
+}
+
+model Transfer {
+  id         Int        @id
+  id         ContractId @relation(fields: [idId], references: [id])
+  idId       Int
+  to         ContractId @relation(fields: [toId], references: [id])
+  toId       Int
+  amount     Int
+  asset_id   AssetId    @relation(fields: [asset_idId], references: [id])
+  asset_idId Int
+  pc         Int
+  is         Int
+}
+
+model TransferOut {
+  id         Int        @id
+  id         ContractId @relation(fields: [idId], references: [id])
+  idId       Int
+  to         Address    @relation(fields: [toId], references: [id])
+  toId       Int
+  amount     Int
+  asset_id   AssetId    @relation(fields: [asset_idId], references: [id])
+  asset_idId Int
+  pc         Int
+  is         Int
+}
+
 model TxPointer {
-  id            Int             @id
-  block_height  Int
-  tx_index      Int
-  InputContract InputContract[]
-  Mint          Mint[]
+  id           Int @id
+  block_height Int
+  tx_index     Int
 }
 
 model UtxoId {
-  id            Int             @id
-  tx_id         String
-  output_index  Int
-  InputContract InputContract[]
+  id           Int    @id
+  tx_id        String
+  output_index Int
+}
+
+model Witness {
+  id Int @id
 }

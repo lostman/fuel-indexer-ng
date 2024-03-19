@@ -15,7 +15,7 @@ mod blocks;
 mod ecal;
 mod extensions;
 mod prisma;
-mod schema_builder;
+mod sql;
 mod types;
 
 use crate::abi::{print_abi, ABI};
@@ -78,7 +78,7 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     //std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
-    let mut db_schema = crate::schema_builder::SQLTableBuilder::new(abi.clone());
+    let mut db_schema = sql::sql_table_builder::SQLTableBuilder::new(abi.clone());
     db_schema.process_program_abi(&abi);
     for stmt in db_schema.statements() {
         println!("{};", stmt);
@@ -98,11 +98,8 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 
 use sqlx::{Pool, Postgres};
 
-async fn run_block_indexer(pool: Pool<Postgres>) {
-    let bi = blocks::BlocksIter::new(6002464).unwrap();
-    for b in bi {
-        println!("{:#?}", b);
-
+async fn run_block_indexer(pool: Pool<Postgres>, start_block: u32) {
+    for b in blocks::BlocksIter::new(start_block).unwrap() {
         let data = fuels::core::codec::ABIEncoder::encode(&[b.into_token()])
             .unwrap()
             .resolve(0);
@@ -118,7 +115,13 @@ async fn main() {
     let conn_url = "postgresql://postgres:postgres@localhost";
     let pool: Pool<Postgres> = sqlx::PgPool::connect(&conn_url).await.unwrap();
 
-    run_block_indexer(pool.clone()).await;
+    let start_block: (i32,) = sqlx::query_as("select MAX(height) from \"FuelBlock\"")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or_default();
+    let start_block = start_block.0 as u32;
+
+    run_block_indexer(pool.clone(), start_block).await;
 
     // let indexers = HashMap::from([
     //     ("struct MyStruct", "mystruct-indexer"),

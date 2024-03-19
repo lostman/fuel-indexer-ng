@@ -25,10 +25,15 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
             let mut id_field = Field::new("id", "Int");
             id_field.id(IdFieldDefinition::new());
             model.push_field(id_field);
-            for TypeApplication { name, type_id, type_arguments } in components.as_ref().unwrap() {
-                let field_decl = types
-                    .get(&type_id)
-                    .expect(&format!("TypeDeclaration for TypeApplication {name} with type_id={type_id}"));
+            for TypeApplication {
+                name,
+                type_id,
+                type_arguments,
+            } in components.as_ref().unwrap()
+            {
+                let field_decl = types.get(&type_id).expect(&format!(
+                    "TypeDeclaration for TypeApplication {name} with type_id={type_id}"
+                ));
                 match field_decl.type_field.as_str() {
                     "u8" => model.push_field(Field::new(name, "Int")),
                     "u16" => model.push_field(Field::new(name, "Int")),
@@ -60,30 +65,42 @@ pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
 
                         let inner_decl = types.get(&option_type_application.type_id).unwrap();
                         let field_type = if inner_decl.type_field == "struct Vec" {
-                            let option_type_argument = &option_type_application.type_arguments.as_ref().unwrap()[0];
-                            let inner_inner_decl = types.get(&option_type_argument.type_id).unwrap();
+                            let option_type_argument =
+                                &option_type_application.type_arguments.as_ref().unwrap()[0];
+                            let inner_inner_decl =
+                                types.get(&option_type_argument.type_id).unwrap();
                             if inner_inner_decl.type_field == "u8" {
                                 // TODO: Prisma eqivalent of Vec<u8>
                                 "String".to_string()
                             } else {
-                                inner_inner_decl.type_field.clone()    
+                                inner_inner_decl.type_field.clone()
                             }
                         } else if inner_decl.type_field.starts_with("struct") {
-                            inner_decl.type_field.strip_prefix("struct ").unwrap().to_owned()
+                            inner_decl
+                                .type_field
+                                .strip_prefix("struct ")
+                                .unwrap()
+                                .to_owned()
                         } else if inner_decl.type_field.starts_with("enum") {
-                            inner_decl.type_field.strip_prefix("struct ").unwrap().to_owned()
+                            inner_decl
+                                .type_field
+                                .strip_prefix("struct ")
+                                .unwrap()
+                                .to_owned()
                         } else {
                             inner_decl.type_field.clone()
                         };
-                        
+
                         let mut f = Field::new(name, field_type);
                         f.optional();
                         model.push_field(f);
-                    },
+                    }
                     "[_; 7]" => {
                         // TODO
                         continue;
                     }
+                    "[enum Option; 128]" => continue,
+                    "[_; 128]" => panic!(""),
                     x => unimplemented!("{x}"),
                 }
             }
