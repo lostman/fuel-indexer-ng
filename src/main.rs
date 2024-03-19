@@ -74,8 +74,8 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     print_abi(&abi);
 
     // TODO: reenable
-    // let prisma_schema = crate::prisma::schema_from_abi(&abi.types);
-    // std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
+    //let prisma_schema = crate::prisma::schema_from_abi(&abi.types);
+    //std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
     let mut db_schema = crate::schema_builder::SchemaConstructor::new(abi.clone());
@@ -98,8 +98,8 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
 
 use sqlx::{Pool, Postgres};
 
-async fn foo(pool: Pool<Postgres>) {
-    let bi = blocks::BlocksIter::new(6000803).unwrap();
+async fn run_block_indexer(pool: Pool<Postgres>) {
+    let bi = blocks::BlocksIter::new(6002464).unwrap();
     for b in bi {
         println!("{:#?}", b);
 
@@ -118,7 +118,7 @@ async fn main() {
     let conn_url = "postgresql://postgres:postgres@localhost";
     let pool: Pool<Postgres> = sqlx::PgPool::connect(&conn_url).await.unwrap();
 
-    foo(pool.clone()).await;
+    run_block_indexer(pool.clone()).await;
 
     panic!("");
 
