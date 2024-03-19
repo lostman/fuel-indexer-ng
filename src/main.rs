@@ -1,6 +1,5 @@
 use anyhow::Context;
 use fuels::core::traits::Tokenizable;
-use std::collections::HashMap;
 use std::{fs::File, io::Read};
 
 use fuel_vm::{
@@ -57,6 +56,7 @@ fn run_script(
     client.receipts().expect("Expected receipts").to_owned()
 }
 
+#[allow(unused)]
 fn run_produce_data(pool: Pool<Postgres>) -> (ABI, Vec<Receipt>) {
     let abi_path = format!("sway/scripts/produce-data/out/debug/produce-data-abi.json");
     let abi = crate::abi::parse_abi(&abi_path).unwrap();
@@ -78,7 +78,7 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     //std::fs::write("prisma/prisma/schema.prisma", prisma_schema).unwrap();
 
     println!(">> DATABASE SCHEMA");
-    let mut db_schema = crate::schema_builder::SchemaConstructor::new(abi.clone());
+    let mut db_schema = crate::schema_builder::SQLTableBuilder::new(abi.clone());
     db_schema.process_program_abi(&abi);
     for stmt in db_schema.statements() {
         println!("{};", stmt);
@@ -92,8 +92,8 @@ async fn run_indexer_script(pool: Pool<Postgres>, script_name: &str, data: Vec<u
     // crate::abi::set_ecal_abi(abi);
     let script_path = format!("sway/scripts/{script_name}/out/debug/{script_name}.bin");
 
-    let receipts = run_script(pool, abi, &script_path, data);
-    println!("{receipts:#?}");
+    let _receipts = run_script(pool, abi, &script_path, data);
+    // println!("{receipts:#?}");
 }
 
 use sqlx::{Pool, Postgres};
@@ -120,30 +120,28 @@ async fn main() {
 
     run_block_indexer(pool.clone()).await;
 
-    panic!("");
+    // let indexers = HashMap::from([
+    //     ("struct MyStruct", "mystruct-indexer"),
+    //     // ("struct MyOtherStruct", "myotherstruct-indexer"),
+    // ]);
+    // let (data_abi, data_receipts) = run_produce_data(pool.clone());
+    // println!("{data_receipts:#?}");
 
-    let indexers = HashMap::from([
-        ("struct MyStruct", "mystruct-indexer"),
-        // ("struct MyOtherStruct", "myotherstruct-indexer"),
-    ]);
-    let (data_abi, data_receipts) = run_produce_data(pool.clone());
-    println!("{data_receipts:#?}");
+    // for r in data_receipts {
+    //     match r {
+    //         Receipt::LogData { rb, data, .. } => {
+    //             let data = data.unwrap();
+    //             let type_id = data_abi.logged_types.get(&(rb as usize)).unwrap();
+    //             let type_name = data_abi.types.get(type_id).unwrap().type_field.as_str();
 
-    for r in data_receipts {
-        match r {
-            Receipt::LogData { rb, data, .. } => {
-                let data = data.unwrap();
-                let type_id = data_abi.logged_types.get(&(rb as usize)).unwrap();
-                let type_name = data_abi.types.get(type_id).unwrap().type_field.as_str();
-
-                if let Some(script_name) = indexers.get(type_name) {
-                    println!(">> Running '{script_name}' indexer script for type {type_name}");
-                    run_indexer_script(pool.clone(), &script_name, data).await;
-                } else {
-                    println!(">> No indexer script for type {type_name}");
-                }
-            }
-            _ => (),
-        }
-    }
+    //             if let Some(script_name) = indexers.get(type_name) {
+    //                 println!(">> Running '{script_name}' indexer script for type {type_name}");
+    //                 run_indexer_script(pool.clone(), &script_name, data).await;
+    //             } else {
+    //                 println!(">> No indexer script for type {type_name}");
+    //             }
+    //         }
+    //         _ => (),
+    //     }
+    // }
 }

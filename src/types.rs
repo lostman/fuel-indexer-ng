@@ -110,8 +110,8 @@ impl From<(&fuels::tx::FuelTransaction, TxExtra)> for crate::types::sway::Transa
 }
 
 impl From<&fuel::Policies> for sway::Policies {
-    fn from(value: &fuel::Policies) -> Self {
-        use strum::IntoEnumIterator;
+    fn from(_value: &fuel::Policies) -> Self {
+        // use strum::IntoEnumIterator;
         Self {
             // values: fuel::PolicyType::iter()
             //     .map(|policy_type| value.get(policy_type).unwrap_or_default())
@@ -368,7 +368,7 @@ impl From<&fuel::Receipt> for sway::Receipt {
                 digest,
                 pc,
                 is,
-                data,
+                data: _data,
             } => Self::ReturnData(sway::ReturnData {
                 id,
                 ptr,
@@ -377,7 +377,10 @@ impl From<&fuel::Receipt> for sway::Receipt {
                 pc,
                 is,
             }),
-            fuel::Receipt::ScriptResult { result, gas_used } => {
+            fuel::Receipt::ScriptResult {
+                result: _result,
+                gas_used,
+            } => {
                 Self::ScriptResult(sway::ScriptResult {
                     // result: (&result).into(),
                     gas_used,
@@ -387,10 +390,10 @@ impl From<&fuel::Receipt> for sway::Receipt {
                 sender,
                 recipient,
                 amount,
-                nonce,
+                nonce: _nonce,
                 len,
                 digest,
-                data,
+                data: _data,
             } => Self::MessageOut(sway::MessageOut {
                 sender,
                 recipient,
@@ -419,7 +422,7 @@ impl From<&fuel::Receipt> for sway::Receipt {
 
             fuel::Receipt::Panic {
                 id,
-                reason,
+                reason: _reason,
                 pc,
                 is,
                 contract_id,
@@ -456,7 +459,7 @@ impl From<&fuel::Receipt> for sway::Receipt {
                 digest,
                 pc,
                 is,
-                data,
+                data: _data,
             } => Self::LogData(sway::LogData {
                 id,
                 ra,

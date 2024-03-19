@@ -3,10 +3,10 @@ use datamodel_renderer::{self, Datamodel};
 
 use fuel_abi_types::abi::program::{TypeApplication, TypeDeclaration};
 
-use std::any::Any;
 use std::collections::BTreeMap;
 
 // Generate a Prisma schema from Fuel ABI
+#[allow(unused)]
 pub fn schema_from_abi(types: &BTreeMap<usize, TypeDeclaration>) -> String {
     println!(">> GENERATING PRISMA SCHEMA");
     let mut data_model = Datamodel::new();

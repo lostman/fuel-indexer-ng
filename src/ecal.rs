@@ -1,17 +1,8 @@
 use fuel_asm::RegId;
-use fuel_vm::{
-    error::SimpleResult,
-    interpreter::EcalHandler,
-    prelude::{Interpreter, MemoryRange},
-};
-use fuels::core::codec::{ABIDecoder, DecoderConfig};
-use fuels::types::Token;
+use fuel_vm::{error::SimpleResult, interpreter::EcalHandler, prelude::Interpreter};
+use fuels::core::codec::DecoderConfig;
 
 use sqlx::{Pool, Postgres};
-use std::collections::HashSet;
-use std::convert::TryInto;
-
-use crate::extensions::*;
 
 mod ecal_load;
 mod ecal_print;

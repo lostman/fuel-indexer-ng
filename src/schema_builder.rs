@@ -29,14 +29,14 @@ mod sql {
     // }
 }
 
-pub struct SchemaConstructor {
+pub struct SQLTableBuilder {
     builders: Vec<sql::CreateTableBuilder>,
     extra_builders: Vec<sql::CreateTableBuilder>,
     tables: std::collections::HashSet<String>,
     abi: ABI,
 }
 
-impl SchemaConstructor {
+impl SQLTableBuilder {
     pub fn new(abi: ABI) -> Self {
         Self {
             builders: vec![],
